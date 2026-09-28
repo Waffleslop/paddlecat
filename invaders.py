@@ -1,4 +1,4 @@
-"""Morse Invaders -- a falling-words CW game for the WinKeyer CW Trainer.
+"""Morse Invaders -- a falling-words CW game for PaddleCAT.
 
 Ham-relevant strings (callsigns, Q-codes, abbreviations, words, numbers)
 fall from the top of a canvas. Key one on your paddle and the turret fires

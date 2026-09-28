@@ -1,4 +1,4 @@
-"""Drill content for the WinKeyer CW Trainer trainer.
+"""Drill content for the PaddleCAT trainer.
 
 Each category is a list of template strings. Placeholders such as {CALL},
 {NAME}, {QTH}, {STATE}, {RIG}, {ANT} are filled from the user profile.

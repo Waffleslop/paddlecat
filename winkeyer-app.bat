@@ -1,5 +1,5 @@
 @echo off
-REM Launch the WinKeyer CW Trainer.
+REM Launch PaddleCAT.
 REM
 REM Right-click this file -> Send to -> Desktop (create shortcut) to put a
 REM launcher icon on your desktop. The shortcut works from anywhere because

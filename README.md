@@ -1,6 +1,6 @@
-# WinKeyer CW Trainer
+# PaddleCAT - WinKeyer CW Trainer
 
-A free Windows app for practising Morse code with a **K1EL WinKeyer** and your
+PaddleCAT is a free Windows app for practising Morse code with a **K1EL WinKeyer** and your
 own paddle. It scores your sending, runs drills and simulated QSOs, includes a
 falling-words game, and turns your paddle into a keyboard so you can play
 browser CW games like [Vail](https://vail.woozle.org) and
@@ -11,14 +11,14 @@ browser CW games like [Vail](https://vail.woozle.org) and
 
 ## Download and install
 
-### [⬇ Download WinKeyer CW Trainer for Windows](https://github.com/Waffleslop/winkeyer-cw-trainer/releases/latest/download/WinKeyerCWTrainer.exe)
+### [⬇ Download PaddleCAT for Windows](https://github.com/Waffleslop/winkeyer-cw-trainer/releases/latest/download/PaddleCAT.exe)
 
 There's nothing to install. It's a single program file.
 
 1. **Click the download link above.** If your browser asks, choose **Keep**.
    Browsers sometimes flag programs they haven't seen before.
 2. **Move it somewhere handy** (your Desktop is fine), then **double-click
-   `WinKeyerCWTrainer`** to open it.
+   `PaddleCAT`** to open it.
 3. **The first time only**, Windows may show a blue *"Windows protected your
    PC"* box. This appears because the app is new and from a small independent
    developer, not because anything is wrong. Click **More info**, then
@@ -88,7 +88,7 @@ and describe what you see.
 - **Get on the air:** once your fist is ready, [POTACAT](https://potacat.com)
   lets you operate your own radio remotely, from anywhere.
 
-Both are made by the same author as this trainer.
+PaddleCAT, MorseCAT and POTACAT all come from the same maker.
 
 ## For developers
 
@@ -100,7 +100,7 @@ python winkeyer_app.py
 ```
 
 Build the standalone `.exe` with `build.bat`. It writes
-`dist\WinKeyerCWTrainer.exe`.
+`dist\PaddleCAT.exe`.
 
 **How it works:** the app puts the WinKeyer into WK3 mode and turns on its
 *Paddle Status* report (X2MODE bit 7). The keyer then reports raw lever state

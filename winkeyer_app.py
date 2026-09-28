@@ -1,5 +1,5 @@
 """
-WinKeyer CW Trainer -- GUI
+PaddleCAT - WinKeyer CW Trainer -- GUI
 ===============================
 A small app that does two things with a K1EL WinKeyer + paddle:
 
@@ -402,7 +402,7 @@ class App(ctk.CTk):
         super().__init__()
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
-        self.title("WinKeyer CW Trainer")
+        self.title("PaddleCAT - WinKeyer CW Trainer")
         self.geometry("560x760")
         self.resizable(False, False)
 

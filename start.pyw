@@ -1,4 +1,4 @@
-"""Silent launcher for the WinKeyer CW Trainer.
+"""Silent launcher for PaddleCAT.
 
 Double-click this file to run the app -- no console window at all (the .pyw
 extension makes Windows associate it with pythonw.exe). Right-click ->

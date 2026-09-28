@@ -1,4 +1,4 @@
-"""Streaming Morse decoder for the WinKeyer CW Trainer.
+"""Streaming Morse decoder for PaddleCAT.
 
 Consumes raw key-envelope edges (down/up with timestamps) from the app's
 iambic keyer -- or a shadow keyer in paddle mode -- and emits decoded text

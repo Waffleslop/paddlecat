@@ -1,4 +1,4 @@
-"""QSO simulator scenarios for the WinKeyer CW Trainer.
+"""QSO simulator scenarios for PaddleCAT.
 
 Each scenario is an ordered list of steps. A step has:
 

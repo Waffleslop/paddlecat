@@ -1,21 +1,21 @@
 @echo off
 REM ---------------------------------------------------------------------
-REM Build WinKeyerCWTrainer.exe -- a single-file Windows app, no Python
+REM Build PaddleCAT.exe -- a single-file Windows app, no Python
 REM install needed by whoever you give it to.
 REM ---------------------------------------------------------------------
 echo Installing build dependencies...
 python -m pip install --upgrade pyinstaller pyserial customtkinter || goto :fail
 
 echo.
-echo Building WinKeyerCWTrainer.exe ...
+echo Building PaddleCAT.exe ...
 python -m PyInstaller --onefile --windowed --noconfirm ^
-    --name WinKeyerCWTrainer ^
+    --name PaddleCAT ^
     --collect-all customtkinter ^
     winkeyer_app.py || goto :fail
 
 echo.
 echo ======================================================================
-echo  Done.  The app is at:  dist\WinKeyerCWTrainer.exe
+echo  Done.  The app is at:  dist\PaddleCAT.exe
 echo  (winkeyer_vail.py, iambic.py, morse_decode.py, drills.py, qsos.py
 echo   and invaders.py are bundled in automatically.)
 echo ======================================================================
