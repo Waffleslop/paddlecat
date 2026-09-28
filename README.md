@@ -1,4 +1,8 @@
-# PaddleCAT - WinKeyer CW Trainer
+<p align="center">
+  <img src="icon/windows/png/PaddleCAT-256.png" width="160" alt="PaddleCAT logo">
+</p>
+
+<h1 align="center">PaddleCAT - WinKeyer CW Trainer</h1>
 
 **Your WinKeyer is now a VBand adapter.** Play
 [Morse Invaders](https://morseinvaders.com),
@@ -8,6 +12,13 @@
 PaddleCAT is a free Windows app for practising Morse code with a **K1EL
 WinKeyer** and your paddle. Besides playing browser games, it scores your
 sending, runs drills and simulated QSOs, and has its own arcade game.
+
+<p align="center">
+  <img src="docs/screenshots/play-online.png" width="32%" alt="Play Online tab: pick Morse Invaders, VBand or Vail and play with your paddle">
+  <img src="docs/screenshots/trainer.png" width="32%" alt="Trainer: the part of the line you have sent lights up green">
+  <img src="docs/screenshots/invaders.png" width="32%" alt="PaddleCAT Invaders: key the falling words to shoot them down">
+</p>
+<p align="center"><sub>Play Online &nbsp;·&nbsp; Trainer &nbsp;·&nbsp; PaddleCAT Invaders</sub></p>
 
 > **You need:** a Windows PC and a K1EL **WinKeyer 3** (WK3, or a WKUSB with
 > WK3 firmware) with your paddle plugged in. Tested on a K1EL WK3.1.

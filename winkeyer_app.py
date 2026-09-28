@@ -756,7 +756,7 @@ class App(ctk.CTk):
         keys = f"the {dit} key" if keyer else f"the {dit} and {dah} keys"
         setting = ("straight key" if keyer else
                    game["setting"] if game else "paddle / iambic")
-        where = (f"Click Open game, then set {name}'s" if game
+        where = ("Click Open game, then set the game's" if game
                  else "Open your game and set its")
         self.play_steps.configure(text=(
             "1.  Click Connect at the top.\n"

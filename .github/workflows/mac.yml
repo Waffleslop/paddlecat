@@ -21,6 +21,9 @@ jobs:
     # Pinned: POTACAT found a -latest mac image broke keychain unlock for
     # codesign with the same secrets (2026-09). Move deliberately.
     runs-on: macos-14
+    env:
+      # Only a signed + notarized DMG goes onto a public release.
+      SIGNED: ${{ secrets.MAC_CSC_LINK != '' && secrets.APPLE_ID != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -76,7 +79,7 @@ jobs:
           if-no-files-found: error
 
       - name: Attach to release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && env.SIGNED == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ github.event.release.tag_name }}" dist/PaddleCAT-mac.dmg --clobber

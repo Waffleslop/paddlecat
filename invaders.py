@@ -30,7 +30,7 @@ DEBUG = os.environ.get("WKB_DEBUG") == "1"
 
 # -- tuning -----------------------------------------------------------------
 TICK_MS        = 33          # ~30 FPS
-CANVAS_W       = 520
+CANVAS_W       = 500         # fits inside the tab (520 clipped the HUD)
 CANVAS_H       = 440
 LIVES          = 3
 BASE_FALL      = 16.0        # px/s at wave 1
