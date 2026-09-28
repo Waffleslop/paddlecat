@@ -19,6 +19,7 @@ Drill content lives in drills.py. Your callsign + info live in
 %APPDATA%\\WinKeyerKeyboard\\profile.json.
 """
 
+import ctypes
 import json
 import os
 import queue
@@ -72,7 +73,7 @@ def _resource(rel):
     return os.path.join(base, rel)
 
 
-APP_ICON = _resource(os.path.join("icon", "windows", "PaddleCAT.ico"))
+APP_ICON = _resource(os.path.join("icon", "windows", "PaddleCAT-app.ico"))
 
 
 def _profile_path():
@@ -410,6 +411,11 @@ class App(ctk.CTk):
     AUTO_NEXT_MS = 1200
 
     def __init__(self):
+        try:    # own taskbar identity, so Windows shows our icon, not Python's
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "PaddleCAT.WinKeyerCWTrainer")
+        except Exception:
+            pass
         T.apply()                       # must precede the root window
         super().__init__()
         self.title("PaddleCAT - WinKeyer CW Trainer")
@@ -671,10 +677,18 @@ class App(ctk.CTk):
                      text_color=T.TEXT_SOFT).pack(fill="x", padx=14, pady=(10, 0))
         self.t_target_font = ctk.CTkFont(family="Consolas", size=34,
                                          weight="bold")
-        self.t_target_lbl = ctk.CTkLabel(
-            p, text="", anchor="w", justify="left", wraplength=500,
-            font=self.t_target_font)
-        self.t_target_lbl.pack(fill="x", padx=14)
+        # A read-only textbox rather than a label so the matched part of the
+        # line can light up lime as you send it.
+        self.t_target_box = ctk.CTkTextbox(
+            p, font=self.t_target_font, wrap="word", fg_color="transparent",
+            border_width=0, border_spacing=0, corner_radius=0,
+            activate_scrollbars=False, text_color=T.TEXT, height=44)
+        self.t_target_box.pack(fill="x", padx=14)
+        self.t_target_box.tag_config("hit", foreground=T.LIME)
+        self.t_target_box._textbox.configure(
+            cursor="arrow", takefocus=0, insertwidth=0, padx=0, pady=0)
+        self.t_target_box.configure(state="disabled")
+        self.t_hit = 0                  # chars of t_target matched so far
 
         # Your copy (RX) -- same size as the target
         ctk.CTkLabel(p, text="RX (your copy):", anchor="w",
@@ -827,6 +841,7 @@ class App(ctk.CTk):
         if self.t_template:
             self.t_target = drills.render(self.t_template, self.profile)
             self.t_buffer = ""
+            self.t_hit = 0
             self._update_trainer_view()
 
     # -- enable/disable logic ---------------------------------------------
@@ -1063,6 +1078,7 @@ class App(ctk.CTk):
         self.t_template = template
         self.t_target = target
         self.t_buffer = ""
+        self.t_hit = 0
         self.ctrl.decoder_reset()
         if reset_score:
             self.t_correct = self.t_attempted = self.t_streak = 0
@@ -1079,6 +1095,7 @@ class App(ctk.CTk):
                 pass
             self._auto_next_id = None
         self.t_buffer = ""
+        self.t_hit = 0
         self.ctrl.decoder_reset()
         self.t_status_lbl.configure(text="▶  Send the line above.",
                                     text_color=T.TEXT_SOFT)
@@ -1220,6 +1237,7 @@ class App(ctk.CTk):
                 text="✗  HH — copy cleared, send the line again.",
                 text_color=T.WARN)
             self.t_progress.set(0)
+            self.t_hit = 0
             self._update_trainer_view()
 
     @staticmethod
@@ -1264,13 +1282,48 @@ class App(ctk.CTk):
             self.t_status_lbl.configure(text="✓  Correct!",
                                         text_color=T.LIME)
             self.t_progress.set(1.0)
+            self.t_hit = len(self.t_target)
             self._auto_next_id = self.after(delay, self._next_prompt)
         else:
             self.t_copy_lbl.configure(text_color=T.TEXT)
             self.t_status_lbl.configure(text="…sending…",
                                         text_color=T.TEXT_SOFT)
-            self.t_progress.set(self._match_progress(norm_b, norm_t))
+            frac = self._match_progress(norm_b, norm_t)
+            self.t_progress.set(frac)
+            self.t_hit = self._raw_prefix_len(self.t_target,
+                                              round(frac * len(norm_t)))
         self._update_trainer_view()
+
+    @staticmethod
+    def _raw_prefix_len(target, norm_len):
+        """How many characters of the displayed target cover the first
+        `norm_len` characters of its normalized form (prosigns expand)."""
+        if norm_len <= 0:
+            return 0
+        for j in range(1, len(target) + 1):
+            if len(drills.normalize(target[:j])) >= norm_len:
+                return j
+        return len(target)
+
+    def _render_target(self):
+        """Draw the Send line: matched prefix in lime, the rest in white, and
+        size the box to the wrapped line count."""
+        box, t = self.t_target_box, self.t_target
+        hit = min(self.t_hit, len(t))
+        box.configure(state="normal")
+        box.delete("1.0", "end")
+        box.insert("end", t[:hit], "hit")
+        box.insert("end", t[hit:])
+        box.configure(state="disabled")
+        # Word-wrap estimate at the old label's 500 px wraplength.
+        font, width, lines, line = self.t_target_font, 490, 1, ""
+        for word in t.split(" "):
+            trial = f"{line} {word}" if line else word
+            if line and font.measure(trial) > width:
+                lines, line = lines + 1, word
+            else:
+                line = trial
+        box.configure(height=lines * font.metrics("linespace") + 4)
 
     @staticmethod
     def _trainer_font_size(text):
@@ -1292,7 +1345,7 @@ class App(ctk.CTk):
         if self.t_target_font.cget("size") != size:
             self.t_target_font.configure(size=size)
             self.t_copy_font.configure(size=size)
-        self.t_target_lbl.configure(text=self.t_target)
+        self._render_target()
         # Show the tail of long buffers; matching uses the full buffer.
         self.t_copy_lbl.configure(text=self.t_buffer[-90:] or " ")
         score = (f"{self.t_correct} / {self.t_attempted}   "

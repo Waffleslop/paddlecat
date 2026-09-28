@@ -10,8 +10,8 @@ echo.
 echo Building PaddleCAT.exe ...
 python -m PyInstaller --onefile --windowed --noconfirm ^
     --name PaddleCAT ^
-    --icon icon\windows\PaddleCAT.ico ^
-    --add-data "icon\windows\PaddleCAT.ico;icon\windows" ^
+    --icon icon\windows\PaddleCAT-app.ico ^
+    --add-data "icon\windows\PaddleCAT-app.ico;icon\windows" ^
     --collect-all customtkinter ^
     winkeyer_app.py || goto :fail
 
