@@ -1,0 +1,6 @@
+# Runtime dependencies
+pyserial>=3.5
+customtkinter>=5.2
+
+# Build-time only (for producing the .exe):
+#   pip install pyinstaller
