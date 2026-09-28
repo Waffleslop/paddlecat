@@ -60,6 +60,15 @@ jobs:
           kill -0 "$PID"          # fails the job if the app already died
           kill "$PID"
 
+      - name: Check the DMG (app + Applications link + Finder layout)
+        run: |
+          MNT=$(hdiutil attach -nobrowse -readonly dist/PaddleCAT-mac.dmg | tail -1 | cut -f3)
+          ls -la "$MNT"
+          test -d "$MNT/PaddleCAT.app"
+          test -L "$MNT/Applications"
+          test -f "$MNT/.DS_Store"
+          hdiutil detach "$MNT"
+
       - uses: actions/upload-artifact@v4
         with:
           name: PaddleCAT-mac

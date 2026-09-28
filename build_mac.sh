@@ -80,12 +80,11 @@ if [ "$IDENTITY" != "-" ] && [ -n "${APPLE_ID:-}" ]; then
     rm dist/PaddleCAT-notarize.zip
 fi
 
-# ---- disk image: the app plus an Applications shortcut to drag it onto -----
-STAGE="$(mktemp -d)"
-cp -R "$APP" "$STAGE/"
-ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname PaddleCAT -srcfolder "$STAGE" -ov -format UDZO "$DMG"
-rm -rf "$STAGE"
+# ---- disk image: drag-to-Applications window, built with dmgbuild ----------
+# (the tool electron-builder uses for POTACAT's DMGs)
+"$PYTHON" -m pip install --upgrade dmgbuild
+"$PYTHON" -m dmgbuild -s packaging/dmg_settings.py -D app="$APP" \
+    PaddleCAT "$DMG"
 
 if [ "$IDENTITY" != "-" ]; then
     codesign --force --timestamp --sign "$IDENTITY" "$DMG"
