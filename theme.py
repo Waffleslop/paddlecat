@@ -18,6 +18,8 @@ MAGENTA      = "#ff3df2"  # brand + primary controls ("PADDLE")
 MAGENTA_HOT  = "#ff7af6"  # hover
 MAGENTA_DEEP = "#a3169a"  # selected tab/segment (light text sits on it)
 MAGENTA_SOFT = "#ff9cf8"  # hints, "your turn" prompts
+MAGENTA_INK  = "#6b0a65"  # button / selected fill: white text reads at 11:1
+MAGENTA_INK_HOT = "#8a0f82"
 
 LIME      = "#b6ff3b"     # correct / go / active ("CAT")
 LIME_HOT  = "#d4ff85"
@@ -32,9 +34,10 @@ WARN      = "#ffb347"     # amber
 DANGER    = "#ff5a4f"     # errors + Stop (kept clear of magenta's hue)
 ON_ACCENT = "#1a0726"     # text on magenta / lime / danger fills
 
-# Stop-state fill for the big action buttons (magenta is the normal state).
-STOP = DANGER
-GO = MAGENTA
+# Fills for the big action buttons' normal (go) and running (stop) states.
+# Both carry white text, so both are deep shades.
+GO = MAGENTA_INK
+STOP = "#9e1b2f"
 
 HEADING_FAMILY = "Bahnschrift"   # ships with Windows 10+; DIN-like, close to the icon
 MONO_FAMILY = "Consolas"
@@ -49,9 +52,11 @@ _OVERRIDES = {
     "CTkToplevel": {"fg_color": BG},
     "CTkFrame": {"fg_color": SURFACE, "top_fg_color": SURFACE,
                  "border_color": BORDER},
-    "CTkButton": {"fg_color": MAGENTA, "hover_color": MAGENTA_HOT,
-                  "border_color": MAGENTA, "text_color": ON_ACCENT,
-                  "text_color_disabled": DIM},
+    # Deep magenta fill + white text for legibility; the bright neon magenta
+    # lives in the outline.
+    "CTkButton": {"fg_color": MAGENTA_INK, "hover_color": MAGENTA_INK_HOT,
+                  "border_color": MAGENTA, "border_width": 2,
+                  "text_color": "#ffffff", "text_color_disabled": DIM},
     "CTkLabel": {"text_color": TEXT},
     "CTkEntry": {"fg_color": SURFACE_2, "border_color": BORDER,
                  "text_color": TEXT, "placeholder_text_color": DIM},
@@ -77,11 +82,11 @@ _OVERRIDES = {
     "CTkScrollbar": {"fg_color": "transparent", "button_color": RAISED,
                      "button_hover_color": MAGENTA_DEEP},
     "CTkSegmentedButton": {"fg_color": SURFACE_2,
-                           "selected_color": MAGENTA_DEEP,
-                           "selected_hover_color": "#bd1db2",
+                           "selected_color": MAGENTA_INK,
+                           "selected_hover_color": MAGENTA_INK_HOT,
                            "unselected_color": SURFACE_2,
                            "unselected_hover_color": RAISED,
-                           "text_color": TEXT, "text_color_disabled": DIM},
+                           "text_color": "#ffffff", "text_color_disabled": DIM},
     "CTkTextbox": {"fg_color": SURFACE_2, "border_color": BORDER,
                    "text_color": TEXT, "scrollbar_button_color": RAISED,
                    "scrollbar_button_hover_color": MAGENTA_DEEP},
@@ -98,4 +103,6 @@ def apply():
     theme = ctk.ThemeManager.theme
     for widget, keys in _OVERRIDES.items():
         for key, color in keys.items():
-            theme[widget][key] = color if color == "transparent" else _pair(color)
+            if isinstance(color, str) and color != "transparent":
+                color = _pair(color)
+            theme[widget][key] = color
