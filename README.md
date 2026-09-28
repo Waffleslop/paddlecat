@@ -50,7 +50,7 @@ matches what you hear in the sidetone.
 sidetone, and you answer on your paddle. Scenarios include short and full rag
 chews, POTA hunter and activator, and a contest search-and-pounce QSO.
 
-**Invaders.** Words, Q-codes, callsigns and numbers fall from the sky, and you
+**PaddleCAT Invaders.** Words, Q-codes, callsigns and numbers fall from the sky, and you
 shoot one down by keying it. Seven content mixes, each with its own high score.
 
 **Bridge.** Turns your paddle into keystrokes so you can play browser CW games.

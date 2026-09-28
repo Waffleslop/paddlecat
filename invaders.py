@@ -1,4 +1,4 @@
-"""Morse Invaders -- a falling-words CW game for PaddleCAT.
+"""PaddleCAT Invaders -- a falling-words CW game.
 
 Ham-relevant strings (callsigns, Q-codes, abbreviations, words, numbers)
 fall from the top of a canvas. Key one on your paddle and the turret fires
@@ -556,7 +556,8 @@ class InvadersGame:
                                      tags="overlay")
         ty = CANVAS_H / 2 - (70 if subtitle else 30)
         self._neon_text(CANVAS_W / 2, ty, title, T.MAGENTA,
-                        (T.HEADING_FAMILY, 32, "bold"), tags="overlay")
+                        (T.HEADING_FAMILY, 32 if len(title) <= 14 else 28, "bold"),
+                        tags="overlay")
         if subtitle:
             self.canvas.create_text(CANVAS_W / 2, CANVAS_H / 2 - 36,
                                     text=subtitle, fill=T.TEXT_SOFT,
@@ -581,7 +582,7 @@ class InvadersGame:
                "A word gap clears your buffer; HH erases.")
         if warn or not (self.is_ready() or self.debug_keys):
             sub += "\n\nPress START on the Bridge tab first"
-        self._show_overlay("MORSE INVADERS", sub)
+        self._show_overlay("PADDLECAT INVADERS", sub)
 
     def _game_over(self):
         self.state = "gameover"
@@ -622,7 +623,7 @@ if __name__ == "__main__":
 
     T.apply()
     root = ctk.CTk()
-    root.title("Morse Invaders — standalone test")
+    root.title("PaddleCAT Invaders — standalone test")
     root.geometry("560x580")
     best = {}
     game = InvadersGame(
