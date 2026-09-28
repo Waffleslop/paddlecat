@@ -173,7 +173,7 @@ class InvadersGame:
 
     def on_bridge_stopped(self):
         if self.state == "playing":
-            self.pause(auto=True, reason="Bridge stopped")
+            self.pause(auto=True, reason="WinKeyer disconnected")
 
     def _on_button(self):
         if self.state == "playing":
@@ -222,7 +222,7 @@ class InvadersGame:
         if self.state != "paused":
             return
         if not (self.is_ready() or self.debug_keys):
-            self._show_overlay("PAUSED", "Press START on the Bridge tab first")
+            self._show_overlay("PAUSED", "Click Connect at the top first")
             return
         self._hide_overlay()
         self.state = "playing"
@@ -285,7 +285,7 @@ class InvadersGame:
             return
         try:
             if not (self.is_ready() or self.debug_keys):
-                self.pause(auto=True, reason="Bridge stopped")
+                self.pause(auto=True, reason="WinKeyer disconnected")
                 return
             now = time.perf_counter()
             dt = min(now - self._last_tick, 0.1)
@@ -581,7 +581,7 @@ class InvadersGame:
                "Key one on your paddle to shoot it down.\n"
                "A word gap clears your buffer; HH erases.")
         if warn or not (self.is_ready() or self.debug_keys):
-            sub += "\n\nPress START on the Bridge tab first"
+            sub += "\n\nClick Connect at the top first"
         self._show_overlay("PADDLECAT INVADERS", sub)
 
     def _game_over(self):

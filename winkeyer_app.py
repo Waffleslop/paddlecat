@@ -3,8 +3,8 @@ PaddleCAT - WinKeyer CW Trainer -- GUI
 ===============================
 A small app that does two things with a K1EL WinKeyer + paddle:
 
-  Bridge   Translate your paddle into keystrokes so you can play browser CW
-           games (Morse Invaders, Vail, VBand) -- either as raw passthrough
+  Play Online  Translate your paddle into keystrokes so you can play browser
+           CW games (Morse Invaders, Vail, VBand) -- either as raw passthrough
            (game does the iambic), or with the app's own iambic keyer (the
            app owns the speed, slider or live from the WinKeyer knob).
 
@@ -26,6 +26,7 @@ import queue
 import sys
 import threading
 import time
+import webbrowser
 from pathlib import Path
 
 import serial
@@ -55,6 +56,24 @@ KEY_CHOICES = {
     "Space":             "space",
 }
 KEY_LABELS = list(KEY_CHOICES)
+
+# Browser games the Play Online tab can set up in one click. Keys verified
+# 2026-09-28: Vail from its source (static/scripts/inputs.mjs), VBand from its
+# adapter convention (Left/Right Ctrl), Morse Invaders on hardware ([ and ]).
+GAMES = {
+    "Morse Invaders": {"url": "https://morseinvaders.com",
+                       "dit": "lbracket", "dah": "rbracket",
+                       "setting": "paddle / iambic"},
+    "VBand":          {"url": "https://hamradio.solutions/vband/",
+                       "dit": "lctrl", "dah": "rctrl",
+                       "setting": "Paddle"},
+    "Vail":           {"url": "https://vail.woozle.org",
+                       "dit": "lbracket", "dah": "rbracket",
+                       "setting": "Iambic"},
+}
+CUSTOM_GAME = "Custom"
+GAME_LABELS = list(GAMES) + [CUSTOM_GAME]
+PLAY_TAB = "Play Online"
 
 
 def _label_for(keyname):
@@ -285,6 +304,14 @@ class Controller:
         self._lock_until[name] = t + 0.025
         self._press(name, now)
 
+    def set_keys(self, dit_key, dah_key, swap):
+        """Change output keys live. Anything held is released first on its
+        old key, so a key can't be left stuck down in the game."""
+        for name in ("dit", "dah"):
+            if self._down[name]:
+                self._press(name, False)
+        self.dit_key, self.dah_key, self.swap = dit_key, dah_key, swap
+
     def _press(self, name, down):
         self._down[name] = down
         if not self.output_enabled:
@@ -447,15 +474,15 @@ class App(ctk.CTk):
         # Tabs
         self.tabs = ctk.CTkTabview(self, height=660)
         self.tabs.pack(fill="both", expand=True, padx=10, pady=(0, 0))
-        self.tabs.add("Bridge")
+        self.tabs.add(PLAY_TAB)
         self.tabs.add("Trainer")
         self.tabs.add("QSO Sim")
         self.tabs.add("Invaders")
         self.tabs.add("Profile")
         self.tabs.configure(command=self._on_tab_change)
-        self._prev_tab = "Bridge"
+        self._prev_tab = PLAY_TAB
 
-        self._build_bridge(self.tabs.tab("Bridge"))
+        self._build_play(self.tabs.tab(PLAY_TAB))
         self._build_trainer(self.tabs.tab("Trainer"))
         self._build_qso(self.tabs.tab("QSO Sim"))
         self.game = invaders.InvadersGame(
@@ -483,56 +510,90 @@ class App(ctk.CTk):
 
     # -- HEADER ------------------------------------------------------------
     def _build_header(self):
-        """PADDLE / CAT wordmark in the icon's colours."""
+        """PADDLE / CAT wordmark, plus the WinKeyer connection -- shared by
+        every tab, so it lives up here rather than on any one of them."""
         head = ctk.CTkFrame(self, fg_color="transparent")
-        head.pack(fill="x", padx=16, pady=(10, 0))
+        head.pack(fill="x", padx=16, pady=(10, 4))
         mark = ctk.CTkFont(family=T.HEADING_FAMILY, size=26, weight="bold")
         ctk.CTkLabel(head, text="PADDLE", font=mark,
                      text_color=T.MAGENTA).pack(side="left")
         ctk.CTkLabel(head, text="CAT", font=mark,
                      text_color=T.LIME).pack(side="left", padx=(6, 0))
-        ctk.CTkLabel(head, text="WinKeyer CW Trainer", text_color=T.DIM,
-                     font=ctk.CTkFont(family=T.HEADING_FAMILY, size=13)
-                     ).pack(side="left", padx=(12, 0), pady=(8, 0))
 
-    # -- BRIDGE TAB --------------------------------------------------------
-    def _build_bridge(self, p):
+        self.action_btn = ctk.CTkButton(
+            head, text="Connect", width=104,
+            font=ctk.CTkFont(weight="bold"), command=self._on_action)
+        self.action_btn.pack(side="right")
+        self.detect_btn = ctk.CTkButton(head, text="Detect", width=64,
+                                        command=self._on_detect)
+        self.detect_btn.pack(side="right", padx=(0, 6))
+        self.port_var = ctk.StringVar(value="")
+        self.port_menu = ctk.CTkOptionMenu(head, variable=self.port_var,
+                                           values=["(none)"], width=112)
+        self.port_menu.pack(side="right", padx=(0, 6))
+
+    # -- PLAY ONLINE TAB ---------------------------------------------------
+    def _build_play(self, p):
         pad = {"padx": 14, "pady": (10, 0)}
 
-        # Port row
+        ctk.CTkLabel(p, text="Use your paddle in browser CW games",
+                     font=ctk.CTkFont(family=T.HEADING_FAMILY, size=18,
+                                      weight="bold"),
+                     anchor="w").pack(fill="x", padx=14, pady=(12, 0))
+
+        # Game picker: one click sets the right mode and keys.
         row = ctk.CTkFrame(p, fg_color="transparent")
         row.pack(fill="x", **pad)
-        ctk.CTkLabel(row, text="Port").pack(side="left")
-        self.port_var = ctk.StringVar(value="")
-        self.port_menu = ctk.CTkOptionMenu(row, variable=self.port_var,
-                                           values=["(none)"], width=140)
-        self.port_menu.pack(side="left", padx=8)
-        self.detect_btn = ctk.CTkButton(row, text="Detect", width=80,
-                                        command=self._on_detect)
-        self.detect_btn.pack(side="left")
+        ctk.CTkLabel(row, text="Game").pack(side="left")
+        self.game_var = ctk.StringVar(value=self._initial_game())
+        self.game_menu = ctk.CTkOptionMenu(row, variable=self.game_var,
+                                           values=GAME_LABELS, width=170,
+                                           command=self._on_game)
+        self.game_menu.pack(side="left", padx=8)
+        self.open_btn = ctk.CTkButton(row, text="Open game ↗", width=120,
+                                      command=self._open_game)
+        self.open_btn.pack(side="left")
 
-        # Start / Stop
-        self.action_btn = ctk.CTkButton(p, text="START", height=44,
-                                        font=ctk.CTkFont(size=16, weight="bold"),
-                                        command=self._on_action)
-        self.action_btn.pack(fill="x", **pad)
+        self.play_steps = ctk.CTkLabel(p, text="", anchor="w", justify="left",
+                                       wraplength=500, text_color=T.TEXT)
+        self.play_steps.pack(fill="x", padx=14, pady=(12, 0))
+
+        # Live state: is output on, and are the levers arriving?
+        row = ctk.CTkFrame(p, fg_color="transparent")
+        row.pack(fill="x", padx=14, pady=(12, 0))
+        self.play_state = ctk.CTkLabel(row, text="")
+        self.play_state.pack(side="left")
+        self.dah_dot = ctk.CTkLabel(row, text="● dah", text_color=T.FAINT)
+        self.dah_dot.pack(side="right")
+        self.dit_dot = ctk.CTkLabel(row, text="● dit", text_color=T.FAINT)
+        self.dit_dot.pack(side="right", padx=(0, 8))
+
+        # Everything below is for tinkerers; the game picker covers most people.
+        self.adv_btn = ctk.CTkButton(
+            p, text="▸  Advanced settings", anchor="w", fg_color="transparent",
+            border_width=0, hover_color=T.RAISED, text_color=T.MAGENTA_SOFT,
+            command=self._toggle_advanced)
+        self.adv_btn.pack(fill="x", padx=8, pady=(14, 0))
+        holder = ctk.CTkFrame(p, fg_color="transparent")
+        holder.pack(fill="x")
+        a = self.adv = ctk.CTkFrame(holder, fg_color="transparent")
 
         # Mode
-        row = ctk.CTkFrame(p, fg_color="transparent")
+        row = ctk.CTkFrame(a, fg_color="transparent")
         row.pack(fill="x", **pad)
         ctk.CTkLabel(row, text="Mode").pack(side="left")
-        self.mode_var = ctk.StringVar(value=self.settings.get("mode", "Keyer"))
+        self.mode_var = ctk.StringVar(value=self.settings.get("mode", "Paddle"))
         self.mode_seg = ctk.CTkSegmentedButton(
-            row, values=["Keyer", "Paddle"], variable=self.mode_var,
-            command=lambda _=None: self._sync_enabled())
+            row, values=["Paddle", "Keyer"], variable=self.mode_var,
+            command=lambda _=None: self._on_mode())
         self.mode_seg.pack(side="left", padx=8)
 
-        self.hint = ctk.CTkLabel(p, text="", text_color=T.MAGENTA_SOFT,
+        self.hint = ctk.CTkLabel(a, text="", text_color=T.MAGENTA_SOFT,
                                  wraplength=480, justify="left")
         self.hint.pack(fill="x", padx=14, pady=(4, 0))
 
         # Speed
-        box = ctk.CTkFrame(p)
+        box = ctk.CTkFrame(a)
         box.pack(fill="x", **pad)
         head = ctk.CTkFrame(box, fg_color="transparent")
         head.pack(fill="x", padx=10, pady=(8, 0))
@@ -554,7 +615,7 @@ class App(ctk.CTk):
         self.follow_chk.pack(anchor="w", padx=10, pady=(0, 8))
 
         # Keys
-        box = ctk.CTkFrame(p)
+        box = ctk.CTkFrame(a)
         box.pack(fill="x", **pad)
         r1 = ctk.CTkFrame(box, fg_color="transparent")
         r1.pack(fill="x", padx=10, pady=(8, 2))
@@ -562,7 +623,8 @@ class App(ctk.CTk):
         self.dit_var = ctk.StringVar(
             value=_label_for(self.settings.get("dit_key", "lbracket")))
         self.dit_menu = ctk.CTkOptionMenu(r1, variable=self.dit_var,
-                                          values=KEY_LABELS, width=200)
+                                          values=KEY_LABELS, width=200,
+                                          command=lambda _=None: self._on_keys())
         self.dit_menu.pack(side="left")
         r2 = ctk.CTkFrame(box, fg_color="transparent")
         r2.pack(fill="x", padx=10, pady=2)
@@ -570,24 +632,25 @@ class App(ctk.CTk):
         self.dah_var = ctk.StringVar(
             value=_label_for(self.settings.get("dah_key", "rbracket")))
         self.dah_menu = ctk.CTkOptionMenu(r2, variable=self.dah_var,
-                                          values=KEY_LABELS, width=200)
+                                          values=KEY_LABELS, width=200,
+                                          command=lambda _=None: self._on_keys())
         self.dah_menu.pack(side="left")
         self.swap_var = ctk.BooleanVar(
             value=bool(self.settings.get("swap", False)))
         self.swap_chk = ctk.CTkCheckBox(box, text="Swap dit / dah",
-                                        variable=self.swap_var)
+                                        variable=self.swap_var,
+                                        command=self._on_keys)
         self.swap_chk.pack(anchor="w", padx=10, pady=(2, 8))
 
-        # Mute + activity
+        # Mute + sidetone
         self.mute_var = ctk.BooleanVar(
             value=bool(self.settings.get("mute", True)))
-        self.mute_chk = ctk.CTkCheckBox(p, text="Mute WinKeyer sidetone",
+        self.mute_chk = ctk.CTkCheckBox(a, text="Mute WinKeyer sidetone",
                                         variable=self.mute_var,
                                         command=self._on_mute)
         self.mute_chk.pack(anchor="w", padx=14, pady=(12, 0))
 
-        # Sidetone tone + volume (effective when 'Mute' is unchecked)
-        side = ctk.CTkFrame(p)
+        side = ctk.CTkFrame(a)
         side.pack(fill="x", padx=14, pady=(8, 0))
         trow = ctk.CTkFrame(side, fg_color="transparent")
         trow.pack(fill="x", padx=10, pady=(8, 0))
@@ -613,13 +676,87 @@ class App(ctk.CTk):
             command=self._on_vol)
         self.vol_seg.pack(side="left", padx=8)
 
-        row = ctk.CTkFrame(p, fg_color="transparent")
-        row.pack(fill="x", padx=14, pady=(8, 0))
-        ctk.CTkLabel(row, text="Activity:").pack(side="left")
-        self.dit_dot = ctk.CTkLabel(row, text="● dit", text_color=T.FAINT)
-        self.dit_dot.pack(side="left", padx=(8, 0))
-        self.dah_dot = ctk.CTkLabel(row, text="● dah", text_color=T.FAINT)
-        self.dah_dot.pack(side="left", padx=(8, 0))
+        if self.settings.get("show_advanced"):
+            self._toggle_advanced()
+
+    def _initial_game(self):
+        saved = self.settings.get("game")
+        if saved in GAME_LABELS:
+            return saved
+        return "Morse Invaders"   # also matches the old [ ] default
+
+    def _toggle_advanced(self):
+        if self.adv.winfo_manager():
+            self.adv.pack_forget()
+            self.adv_btn.configure(text="▸  Advanced settings")
+        else:
+            self.adv.pack(fill="x")
+            self.adv_btn.configure(text="▾  Advanced settings")
+
+    def _on_game(self, choice=None):
+        game = GAMES.get(self.game_var.get())
+        if game:
+            self.dit_var.set(_label_for(game["dit"]))
+            self.dah_var.set(_label_for(game["dah"]))
+            if not (self.running or self.busy):
+                self.mode_var.set("Paddle")
+            elif self.mode_var.get() != "Paddle":
+                self._set_status("Disconnect and reconnect to switch to "
+                                 "Paddle mode for this game.", T.WARN)
+            self._apply_keys()
+        self._sync_enabled()
+        self._save_state()
+
+    def _on_keys(self):
+        """Keys edited by hand: apply live, and show which game (if any)
+        they now match -- preferring the one already picked."""
+        dit = KEY_CHOICES[self.dit_var.get()]
+        dah = KEY_CHOICES[self.dah_var.get()]
+        matches = [name for name, g in GAMES.items()
+                   if g["dit"] == dit and g["dah"] == dah]
+        if self.game_var.get() not in matches:
+            self.game_var.set(matches[0] if matches else CUSTOM_GAME)
+        self._apply_keys()
+        self._update_play_steps()
+        self._save_state()
+
+    def _apply_keys(self):
+        self.ctrl.set_keys(KEY_CHOICES[self.dit_var.get()],
+                           KEY_CHOICES[self.dah_var.get()],
+                           bool(self.swap_var.get()))
+
+    def _on_mode(self):
+        self._sync_enabled()
+        self._save_state()
+
+    def _open_game(self):
+        game = GAMES.get(self.game_var.get())
+        if game:
+            webbrowser.open(game["url"])
+
+    def _update_play_steps(self):
+        name = self.game_var.get()
+        keyer = self.mode_var.get() == "Keyer"
+        game = GAMES.get(name)
+        dit = self.dit_var.get().split("  ")[0]
+        dah = self.dah_var.get().split("  ")[0]
+        keys = f"the {dit} key" if keyer else f"the {dit} and {dah} keys"
+        setting = ("straight key" if keyer else
+                   game["setting"] if game else "paddle / iambic")
+        where = (f"Click Open game, then set {name}'s" if game
+                 else "Open your game and set its")
+        self.play_steps.configure(text=(
+            "1.  Click Connect at the top.\n"
+            f"2.  {where} input to {setting}, using {keys}.\n"
+            "3.  Click into the game and send with your paddle."))
+        self.open_btn.configure(state="normal" if game else "disabled")
+        if self.running:
+            self.play_state.configure(
+                text="● Keyboard output ON while this tab is open",
+                text_color=T.LIME)
+        else:
+            self.play_state.configure(text="○ Not connected",
+                                      text_color=T.MUTED)
 
     # -- TRAINER TAB -------------------------------------------------------
     def _build_trainer(self, p):
@@ -722,11 +859,11 @@ class App(ctk.CTk):
 
         # Connection hint
         self.t_conn_hint = ctk.CTkLabel(
-            p, text="(Press START on the Bridge tab to begin drilling.)",
+            p, text="(Click Connect at the top to begin drilling.)",
             text_color=T.WARN, wraplength=480, justify="left")
         self.t_conn_hint.pack(fill="x", padx=14, pady=(8, 0))
         ctk.CTkLabel(
-            p, text="Tips: uncheck 'Mute WinKeyer sidetone' on the Bridge tab "
+            p, text="Tips: uncheck 'Mute WinKeyer sidetone' (Play Online → Advanced) "
                     "so you can hear yourself. All prosigns count merged or "
                     "letter-spaced — including BK (-...-.-). Made a mistake? "
                     "Send HH (8 dits) to wipe the attempt, or just keep "
@@ -781,7 +918,7 @@ class App(ctk.CTk):
 
         # Connection hint
         ctk.CTkLabel(
-            p, text="(Press START on the Bridge tab first, and UNCHECK Mute "
+            p, text="(Click Connect at the top first, and UNCHECK Mute "
                     "above so you can hear the other op.)",
             text_color=T.WARN, wraplength=480, justify="left"
         ).pack(fill="x", padx=14, pady=(4, 0))
@@ -854,12 +991,11 @@ class App(ctk.CTk):
             "Paddle mode: the game does the iambic. "
             "Set the game to PADDLE / iambic input on the Dit & Dah keys."))
 
+        # Port and mode are fixed while connected; keys apply live.
         locked = "disabled" if (self.running or self.busy) else "normal"
-        for w in (self.port_menu, self.detect_btn, self.mode_seg,
-                  self.dit_menu, self.swap_chk):
+        for w in (self.port_menu, self.detect_btn, self.mode_seg):
             w.configure(state=locked)
-        self.dah_menu.configure(
-            state="disabled" if (keyer or self.running or self.busy) else "normal")
+        self.dah_menu.configure(state="disabled" if keyer else "normal")
         # Speed drives the WinKeyer's internal keyer (and the app's iambic, in
         # Keyer mode) -- useful in both modes. Slider is disabled only when
         # the WinKeyer knob is the source.
@@ -868,8 +1004,9 @@ class App(ctk.CTk):
         self.follow_chk.configure(state="normal")
         self.action_btn.configure(
             state="disabled" if self.busy else "normal",
-            text="STOP" if self.running else "START",
+            text="Disconnect" if self.running else "Connect",
             fg_color=T.STOP if self.running else T.GO)
+        self._update_play_steps()
         # Trainer hint visibility
         if self.running:
             self.t_conn_hint.configure(
@@ -877,7 +1014,7 @@ class App(ctk.CTk):
                 text_color=T.LIME)
         else:
             self.t_conn_hint.configure(
-                text="(Press START on the Bridge tab to begin drilling.)",
+                text="(Click Connect at the top to begin drilling.)",
                 text_color=T.WARN)
 
     # -- tabs --------------------------------------------------------------
@@ -889,9 +1026,15 @@ class App(ctk.CTk):
         # Pause the game when leaving its tab.
         if self._prev_tab == "Invaders" and tab != "Invaders":
             self.game.on_tab_left()
-        # Keyboard output goes off everywhere but the Bridge tab so the
+        # Keyboard output goes off everywhere but the Play Online tab so the
         # synthesized keystrokes don't get typed into our own window.
-        self.ctrl.output_enabled = (tab == "Bridge")
+        self.ctrl.output_enabled = (tab == PLAY_TAB)
+        if self.running and self._prev_tab == PLAY_TAB and tab != PLAY_TAB:
+            self._set_status("Keyboard output paused. Go back to Play Online "
+                             "to use your paddle in games.", T.WARN)
+        elif self.running and tab == PLAY_TAB:
+            self._set_status("Keyboard output on. Click into your game and "
+                             "send.", T.LIME)
         if tab == "Trainer":
             self.ctrl.decoder_reset()
         self._prev_tab = tab
@@ -984,7 +1127,7 @@ class App(ctk.CTk):
         c.mute = self.mute_var.get()
         c.wpm = int(self.speed_var.get())
         c.follow_knob = self.follow_var.get()
-        c.output_enabled = (self.tabs.get() == "Bridge")
+        c.output_enabled = (self.tabs.get() == PLAY_TAB)
         c.sidetone_hz = int(self.tone_var.get())
         c.sidetone_vol = self.vol_var.get().lower()
         self.busy = True
@@ -1147,7 +1290,7 @@ class App(ctk.CTk):
 
     def _sprint_start(self):
         if not self.running:
-            self._set_status("Press START on the Bridge tab first.", T.DANGER)
+            self._set_status("Click Connect at the top first.", T.DANGER)
             return
         self.t_sprint_count = 0
         self.t_sprint_end_time = time.perf_counter() + 60.0
@@ -1373,7 +1516,7 @@ class App(ctk.CTk):
 
     def _qso_start(self):
         if not self.running:
-            self._qso_status("Press START on the Bridge tab first.", T.DANGER)
+            self._qso_status("Click Connect at the top first.", T.DANGER)
             return
         scn = qsos.SCENARIOS.get(self.q_scn_var.get())
         if not scn:
@@ -1471,7 +1614,7 @@ class App(ctk.CTk):
         last = self.settings.get("last_port", "")
         if last and last in ports:
             self.port_var.set(last)
-            self._set_status(f"Ready — last used {last}. Press START.", T.MUTED)
+            self._set_status(f"Ready — last used {last}. Click Connect.", T.MUTED)
         elif ports:
             self._set_status("Looking for a WinKeyer…", T.MUTED)
             self.detect_btn.configure(state="disabled")
@@ -1484,6 +1627,8 @@ class App(ctk.CTk):
         port = self.port_var.get()
         return {
             "last_port":   "" if (not port or port.startswith("(")) else port,
+            "game":        self.game_var.get(),
+            "show_advanced": bool(self.adv.winfo_manager()),
             "mode":        self.mode_var.get(),
             "dit_key":     KEY_CHOICES.get(self.dit_var.get(), "lbracket"),
             "dah_key":     KEY_CHOICES.get(self.dah_var.get(), "rbracket"),
