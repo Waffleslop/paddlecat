@@ -22,6 +22,7 @@ Drill content lives in drills.py. Your callsign + info live in
 import json
 import os
 import queue
+import sys
 import threading
 import time
 from pathlib import Path
@@ -65,6 +66,15 @@ def _label_for(keyname):
 # ---------------------------------------------------------------------------
 # Profile persistence  (~ %APPDATA%/WinKeyerKeyboard/profile.json )
 # ---------------------------------------------------------------------------
+def _resource(rel):
+    """Path to a bundled file, both from source and inside the PyInstaller exe."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, rel)
+
+
+APP_ICON = _resource(os.path.join("icon", "windows", "PaddleCAT.ico"))
+
+
 def _profile_path():
     base = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
     root = Path(base) if base else Path.home()
@@ -403,6 +413,10 @@ class App(ctk.CTk):
         T.apply()                       # must precede the root window
         super().__init__()
         self.title("PaddleCAT - WinKeyer CW Trainer")
+        try:
+            self.iconbitmap(APP_ICON)   # also stops CTk swapping in its own
+        except Exception:
+            pass
         self.geometry("560x800")
         self.resizable(False, False)
 
