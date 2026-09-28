@@ -6,8 +6,32 @@ falling-words game, and turns your paddle into a keyboard so you can play
 browser CW games like [Vail](https://vail.woozle.org) and
 [VBand](https://hamradio.solutions/vband/) without a USB adapter dongle.
 
-> **Requires a WinKeyer 3** (WK3 / WKUSB with WK3 firmware) and Windows.
-> Tested on a K1EL WK3.1.
+> **You need:** a Windows PC and a K1EL **WinKeyer 3** (WK3, or a WKUSB with
+> WK3 firmware) with your paddle plugged in. Tested on a K1EL WK3.1.
+
+## Download and install
+
+### [⬇ Download WinKeyer CW Trainer for Windows](https://github.com/Waffleslop/winkeyer-cw-trainer/releases/latest/download/WinKeyerCWTrainer.exe)
+
+There's nothing to install. It's a single program file.
+
+1. **Click the download link above.** If your browser asks, choose **Keep**.
+   Browsers sometimes flag programs they haven't seen before.
+2. **Move it somewhere handy** (your Desktop is fine), then **double-click
+   `WinKeyerCWTrainer`** to open it.
+3. **The first time only**, Windows may show a blue *"Windows protected your
+   PC"* box. This appears because the app is new and from a small independent
+   developer, not because anything is wrong. Click **More info**, then
+   **Run anyway**. You won't see it again.
+4. **Plug in your WinKeyer** and click **Detect** in the app. It finds the
+   keyer for you.
+5. Fill in your callsign and name on the **Profile** tab, then pick a tab and
+   start sending.
+
+To update later, download the file again from the same link and replace the
+old one. Your profile and high scores are kept.
+
+To remove it, delete the file.
 
 ## What's included
 
@@ -38,24 +62,23 @@ shoot one down by keying it. Seven content mixes, each with its own high score.
 **Profile.** Enter your callsign, name, QTH, state, rig and antenna, and the
 drills fill them in for you.
 
-## Getting started
+## If something isn't working
 
-```
-python -m pip install -r requirements.txt
-python winkeyer_app.py
-```
+- **Detect doesn't find the WinKeyer.** Unplug the USB cable, plug it back
+  in, wait a few seconds and click **Detect** again. Make sure the keyer is
+  plugged directly into the PC, not through an unpowered hub.
+- **"Port is in use".** Another program is using the WinKeyer, usually your
+  logging or rig-control software. Close that program and click **Detect**
+  again. The trainer releases the keyer when you click **STOP** or close it, so
+  your other programs can use it again.
+- **Windows blocked the download or won't open it.** See step 1 and step 3
+  above: choose **Keep**, then **More info → Run anyway**.
+- **Nothing happens in a browser game (Bridge tab).** Click inside the game
+  window first so it's listening for keys, and make sure the game's input
+  setting matches the mode you picked (paddle or straight key).
 
-1. Plug in the WinKeyer and click **Detect** to find its COM port.
-2. Fill in the **Profile** tab.
-3. Pick a tab and start sending.
-
-To build a standalone `.exe` that runs without Python, run `build.bat`. It
-writes `dist\WinKeyerCWTrainer.exe`. The exe is unsigned, so Windows
-SmartScreen warns on first run: click *More info → Run anyway*.
-
-**Troubleshooting:** if the app reports "Port is in use", close your logger or
-rig-control software, which is holding the WinKeyer. A CH340-based WinKeyer
-can occasionally need an unplug and replug.
+Still stuck? [Open an issue](https://github.com/Waffleslop/winkeyer-cw-trainer/issues)
+and describe what you see.
 
 ## Your next steps
 
@@ -67,14 +90,24 @@ can occasionally need an unplug and replug.
 
 Both are made by the same author as this trainer.
 
-## How it works
+## For developers
 
-The app puts the WinKeyer into WK3 mode and turns on its *Paddle Status*
-report (X2MODE bit 7). The keyer then reports raw lever state over USB (1200
-baud), and the app injects keystrokes through the Windows `SendInput` API.
-Scoring uses the WinKeyer's paddle echo, which is decoded in firmware. An
-app-side decoder (`morse_decode.py`) adds merged BK, the HH wipe and a
-measured-WPM estimate. Sending is comfortable up to about 20–25 WPM.
+Run from source (Python 3.10+):
+
+```
+python -m pip install -r requirements.txt
+python winkeyer_app.py
+```
+
+Build the standalone `.exe` with `build.bat`. It writes
+`dist\WinKeyerCWTrainer.exe`.
+
+**How it works:** the app puts the WinKeyer into WK3 mode and turns on its
+*Paddle Status* report (X2MODE bit 7). The keyer then reports raw lever state
+over USB (1200 baud), and the app injects keystrokes through the Windows
+`SendInput` API. Scoring uses the WinKeyer's paddle echo, which is decoded in
+firmware. An app-side decoder (`morse_decode.py`) adds merged BK, the HH wipe
+and a measured-WPM estimate. Sending is comfortable up to about 20–25 WPM.
 
 `winkeyer_vail.py` is also a command-line diagnostic tool:
 
