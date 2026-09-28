@@ -4,3 +4,8 @@ build/
 dist/
 *.spec
 *.lnk
+
+# Signing material made by cert/ scripts -- never commit
+cert/*
+!cert/*.ps1
+!cert/README.md
