@@ -11,7 +11,7 @@ browser CW games like [Vail](https://vail.woozle.org) and
 
 ## Download and install
 
-### [⬇ Download PaddleCAT for Windows](https://github.com/Waffleslop/winkeyer-cw-trainer/releases/latest/download/PaddleCAT.exe)
+### [⬇ Download PaddleCAT for Windows](https://github.com/Waffleslop/paddlecat/releases/latest/download/PaddleCAT.exe)
 
 There's nothing to install. It's a single program file.
 
@@ -77,7 +77,7 @@ drills fill them in for you.
   window first so it's listening for keys, and make sure the game's input
   setting matches the mode you picked (paddle or straight key).
 
-Still stuck? [Open an issue](https://github.com/Waffleslop/winkeyer-cw-trainer/issues)
+Still stuck? [Open an issue](https://github.com/Waffleslop/paddlecat/issues)
 and describe what you see.
 
 ## Your next steps
