@@ -1,10 +1,13 @@
 # PaddleCAT - WinKeyer CW Trainer
 
-PaddleCAT is a free Windows app for practising Morse code with a **K1EL WinKeyer** and your
-own paddle. It scores your sending, runs drills and simulated QSOs, includes a
-falling-words game, and turns your paddle into a keyboard so you can play
-browser CW games like [Vail](https://vail.woozle.org) and
-[VBand](https://hamradio.solutions/vband/) without a USB adapter dongle.
+**Your WinKeyer is now a VBand adapter.** Play
+[Morse Invaders](https://morseinvaders.com),
+[VBand](https://hamradio.solutions/vband/) and
+[Vail](https://vail.woozle.org) with your own paddle, with no extra dongle.
+
+PaddleCAT is a free Windows app for practising Morse code with a **K1EL
+WinKeyer** and your paddle. Besides playing browser games, it scores your
+sending, runs drills and simulated QSOs, and has its own arcade game.
 
 > **You need:** a Windows PC and a K1EL **WinKeyer 3** (WK3, or a WKUSB with
 > WK3 firmware) with your paddle plugged in. Tested on a K1EL WK3.1.
@@ -23,8 +26,8 @@ There's nothing to install. It's a single program file.
    PC"* box. This appears because the app is new and from a small independent
    developer, not because anything is wrong. Click **More info**, then
    **Run anyway**. You won't see it again.
-4. **Plug in your WinKeyer** and click **Detect** in the app. It finds the
-   keyer for you.
+4. **Plug in your WinKeyer** and click **Connect** at the top of the app. If
+   it can't find the keyer, click **Detect** first.
 5. Fill in your callsign and name on the **Profile** tab, then pick a tab and
    start sending.
 
@@ -32,6 +35,18 @@ To update later, download the file again from the same link and replace the
 old one. Your profile and high scores are kept.
 
 To remove it, delete the file.
+
+## Play Morse Invaders, VBand and Vail
+
+1. Click **Connect** at the top of PaddleCAT.
+2. On the **Play Online** tab, pick your game and click **Open game**.
+   PaddleCAT sets the right keys for it.
+3. In the game, set the input to **paddle / iambic** (the tab tells you the
+   exact setting), click into the game, and send.
+
+Your paddle types into the game only while the **Play Online** tab is open.
+Switch to another tab and PaddleCAT pauses keyboard output, so it never types
+into the wrong window.
 
 ## What's included
 
@@ -53,11 +68,13 @@ chews, POTA hunter and activator, and a contest search-and-pounce QSO.
 **PaddleCAT Invaders.** Words, Q-codes, callsigns and numbers fall from the sky, and you
 shoot one down by keying it. Seven content mixes, each with its own high score.
 
-**Bridge.** Turns your paddle into keystrokes so you can play browser CW games.
-- *Paddle mode:* the two levers become two keys, and the game does the iambic
-  timing.
-- *Keyer mode:* the app does the iambic timing on one key, with speed set by a
-  slider or the WinKeyer's speed knob. Set the game to straight-key input.
+**Play Online.** Turns your paddle into keystrokes for browser CW games, with
+one-click setup for Morse Invaders, VBand and Vail. Under **Advanced
+settings** you can pick your own keys or switch modes:
+- *Paddle mode* (the default): the two levers become two keys, and the game
+  does the iambic timing.
+- *Keyer mode:* PaddleCAT does the iambic timing on one key, with speed set by
+  a slider or the WinKeyer's speed knob. Set the game to straight-key input.
 
 **Profile.** Enter your callsign, name, QTH, state, rig and antenna, and the
 drills fill them in for you.
@@ -69,13 +86,13 @@ drills fill them in for you.
   plugged directly into the PC, not through an unpowered hub.
 - **"Port is in use".** Another program is using the WinKeyer, usually your
   logging or rig-control software. Close that program and click **Detect**
-  again. The trainer releases the keyer when you click **STOP** or close it, so
+  again. PaddleCAT releases the keyer when you click **Disconnect** or close it, so
   your other programs can use it again.
 - **Windows blocked the download or won't open it.** See step 1 and step 3
   above: choose **Keep**, then **More info → Run anyway**.
-- **Nothing happens in a browser game (Bridge tab).** Click inside the game
-  window first so it's listening for keys, and make sure the game's input
-  setting matches the mode you picked (paddle or straight key).
+- **Nothing happens in a browser game.** Keep PaddleCAT on the **Play
+  Online** tab, click inside the game window so it's listening for keys, and
+  check that the game's input setting matches step 2 on that tab.
 
 Still stuck? [Open an issue](https://github.com/Waffleslop/paddlecat/issues)
 and describe what you see.
