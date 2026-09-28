@@ -1,0 +1,73 @@
+name: Mac build
+
+# Builds PaddleCAT-mac.dmg (one universal app for Apple Silicon + Intel).
+# - On a published release: attaches the DMG to that release.
+# - Manually (Actions tab -> Run workflow) or on a push to a mac/* branch:
+#   builds and keeps the DMG as a downloadable workflow artifact for testing.
+# Signing + notarization switch on when the MAC_CSC_LINK / APPLE_* secrets
+# exist on this repo; without them the build is unsigned (ad-hoc).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+  push:
+    branches: ['mac/**']   # test builds from a side branch
+
+permissions:
+  contents: write   # to attach the DMG to the release
+
+jobs:
+  build-mac:
+    # Pinned: POTACAT found a -latest mac image broke keychain unlock for
+    # codesign with the same secrets (2026-09). Move deliberately.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install universal2 Python (python.org build, includes Tk)
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/python.pkg" \
+            https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg
+          sudo installer -pkg "$RUNNER_TEMP/python.pkg" -target /
+          PY=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3
+          "$PY" -c "import tkinter, platform; print('Tk', tkinter.TkVersion, platform.machine())"
+          echo "PYTHON=$PY" >> "$GITHUB_ENV"
+
+      - name: Self-test (decoder, mac keyboard module loads)
+        run: |
+          "$PYTHON" -m pip install pyserial customtkinter
+          "$PYTHON" morse_decode.py
+          "$PYTHON" -c "import winkeyer_vail as w; assert w.IS_MAC; print(w.KEYMAP['rctrl'])"
+
+      - name: Build, sign, notarize
+        env:
+          VERSION: ${{ github.event.release.tag_name || '0.0.0-dev' }}
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          export VERSION="${VERSION#v}"
+          chmod +x build_mac.sh
+          ./build_mac.sh
+
+      - name: Smoke test (app launches and stays up)
+        run: |
+          dist/PaddleCAT.app/Contents/MacOS/PaddleCAT &
+          PID=$!
+          sleep 10
+          kill -0 "$PID"          # fails the job if the app already died
+          kill "$PID"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PaddleCAT-mac
+          path: dist/PaddleCAT-mac.dmg
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/PaddleCAT-mac.dmg --clobber

@@ -149,10 +149,10 @@ class InvadersGame:
 
         self.buf_lbl = ctk.CTkLabel(
             parent, text="", text_color=C_DIM,
-            font=ctk.CTkFont(family="Consolas", size=18, weight="bold"))
+            font=ctk.CTkFont(family=T.MONO_FAMILY, size=18, weight="bold"))
         self.buf_lbl.pack(fill="x", padx=14, pady=(2, 0))
 
-        self.font = tkfont.Font(family="Consolas", size=16, weight="bold")
+        self.font = tkfont.Font(family=T.MONO_FAMILY, size=16, weight="bold")
         self.char_w = self.font.measure("0")
 
         if self.debug_keys:
@@ -521,14 +521,14 @@ class InvadersGame:
         self.canvas.delete("hud")
         self.canvas.create_text(10, 10, text=f"SCORE {self.score}",
                                 anchor="nw", fill=C_TEXT,
-                                font=("Consolas", 12, "bold"), tags="hud")
+                                font=(T.MONO_FAMILY, 12, "bold"), tags="hud")
         self.canvas.create_text(CANVAS_W - 10, 10, text=f"WAVE {self.wave}",
                                 anchor="ne", fill=C_TEXT,
-                                font=("Consolas", 12, "bold"), tags="hud")
+                                font=(T.MONO_FAMILY, 12, "bold"), tags="hud")
         self.canvas.create_text(CANVAS_W / 2, 10,
                                 text="▲ " * max(0, self.lives),
                                 anchor="n", fill=C_TURRET,
-                                font=("Consolas", 12), tags="hud")
+                                font=(T.MONO_FAMILY, 12), tags="hud")
 
     def _clear_field(self):
         for t in list(self.targets):
@@ -562,7 +562,7 @@ class InvadersGame:
             self.canvas.create_text(CANVAS_W / 2, CANVAS_H / 2 - 36,
                                     text=subtitle, fill=T.TEXT_SOFT,
                                     justify="center", anchor="n",
-                                    font=("Consolas", 13), tags="overlay")
+                                    font=(T.MONO_FAMILY, 13), tags="overlay")
 
     def _neon_text(self, x, y, text, color, font, **kw):
         """Text with a soft halo underneath, echoing the icon's glow."""

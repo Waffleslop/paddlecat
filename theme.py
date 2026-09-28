@@ -5,6 +5,8 @@ and call apply() once *before* the first CTk widget (including the root
 window) is created: it restyles every standard customtkinter widget.
 """
 
+import sys
+
 import customtkinter as ctk
 
 # -- Palette -----------------------------------------------------------------
@@ -39,8 +41,14 @@ ON_ACCENT = "#1a0726"     # text on magenta / lime / danger fills
 GO = MAGENTA_INK
 STOP = "#9e1b2f"
 
-HEADING_FAMILY = "Bahnschrift"   # ships with Windows 10+; DIN-like, close to the icon
-MONO_FAMILY = "Consolas"
+# DIN-style headings to echo the icon, and a clear monospace for CW text --
+# each from fonts that ship with the OS.
+if sys.platform == "darwin":
+    HEADING_FAMILY = "DIN Alternate"
+    MONO_FAMILY = "Menlo"
+else:
+    HEADING_FAMILY = "Bahnschrift"   # Windows 10+
+    MONO_FAMILY = "Consolas"
 
 
 def _pair(c):

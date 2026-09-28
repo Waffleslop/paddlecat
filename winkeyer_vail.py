@@ -35,7 +35,6 @@ import argparse
 import ctypes
 import sys
 import time
-from ctypes import wintypes
 
 try:
     import serial
@@ -155,73 +154,178 @@ def is_paddle_byte(b):
 
 
 # --------------------------------------------------------------------------
-# Synthetic keyboard output (Windows SendInput, scancode injection)
+# Synthetic keyboard output
+#
+# Same interface on every platform: KEYMAP[name] -> (a, b), then
+# send_key(a, b, keyup).  On Windows (a, b) is (scancode, is_extended); on
+# macOS it is (virtual keycode, device modifier bit or 0).
 # --------------------------------------------------------------------------
-KEYEVENTF_EXTENDEDKEY = 0x0001
-KEYEVENTF_KEYUP       = 0x0002
-KEYEVENTF_SCANCODE    = 0x0008
-INPUT_KEYBOARD        = 1
+IS_MAC = sys.platform == "darwin"
 
-ULONG_PTR = wintypes.WPARAM        # pointer-sized, matches ULONG_PTR
+if sys.platform == "win32":
+    from ctypes import wintypes
 
+    KEYEVENTF_EXTENDEDKEY = 0x0001
+    KEYEVENTF_KEYUP       = 0x0002
+    KEYEVENTF_SCANCODE    = 0x0008
+    INPUT_KEYBOARD        = 1
 
-class KEYBDINPUT(ctypes.Structure):
-    _fields_ = [("wVk", wintypes.WORD),
-                ("wScan", wintypes.WORD),
-                ("dwFlags", wintypes.DWORD),
-                ("time", wintypes.DWORD),
-                ("dwExtraInfo", ULONG_PTR)]
+    ULONG_PTR = wintypes.WPARAM        # pointer-sized, matches ULONG_PTR
 
+    class KEYBDINPUT(ctypes.Structure):
+        _fields_ = [("wVk", wintypes.WORD),
+                    ("wScan", wintypes.WORD),
+                    ("dwFlags", wintypes.DWORD),
+                    ("time", wintypes.DWORD),
+                    ("dwExtraInfo", ULONG_PTR)]
 
-class MOUSEINPUT(ctypes.Structure):   # only present so the union is sized right
-    _fields_ = [("dx", wintypes.LONG),
-                ("dy", wintypes.LONG),
-                ("mouseData", wintypes.DWORD),
-                ("dwFlags", wintypes.DWORD),
-                ("time", wintypes.DWORD),
-                ("dwExtraInfo", ULONG_PTR)]
+    class MOUSEINPUT(ctypes.Structure):   # only present so the union is sized right
+        _fields_ = [("dx", wintypes.LONG),
+                    ("dy", wintypes.LONG),
+                    ("mouseData", wintypes.DWORD),
+                    ("dwFlags", wintypes.DWORD),
+                    ("time", wintypes.DWORD),
+                    ("dwExtraInfo", ULONG_PTR)]
 
+    class _INPUTUNION(ctypes.Union):
+        _fields_ = [("ki", KEYBDINPUT), ("mi", MOUSEINPUT)]
 
-class _INPUTUNION(ctypes.Union):
-    _fields_ = [("ki", KEYBDINPUT), ("mi", MOUSEINPUT)]
+    class INPUT(ctypes.Structure):
+        _fields_ = [("type", wintypes.DWORD), ("u", _INPUTUNION)]
 
+    _user32 = ctypes.WinDLL("user32", use_last_error=True)
+    _user32.SendInput.argtypes = (wintypes.UINT, ctypes.POINTER(INPUT),
+                                  ctypes.c_int)
+    _user32.SendInput.restype = wintypes.UINT
 
-class INPUT(ctypes.Structure):
-    _fields_ = [("type", wintypes.DWORD), ("u", _INPUTUNION)]
+    # Scancode set 1.  (scancode, is_extended) -- right Ctrl is an E0-extended
+    # key, which is how the browser tells "ControlRight" from "ControlLeft".
+    KEYMAP = {
+        "lctrl":    (0x1D, False),
+        "rctrl":    (0x1D, True),
+        "lbracket": (0x1A, False),
+        "rbracket": (0x1B, False),
+        "space":    (0x39, False),
+        "lshift":   (0x2A, False),
+        "z":        (0x2C, False),
+        "x":        (0x2D, False),
+        "comma":    (0x33, False),
+        "period":   (0x34, False),
+        "slash":    (0x35, False),
+    }
 
+    def send_key(scan, extended, keyup):
+        """Inject one keyboard event by scancode."""
+        flags = KEYEVENTF_SCANCODE
+        if extended:
+            flags |= KEYEVENTF_EXTENDEDKEY
+        if keyup:
+            flags |= KEYEVENTF_KEYUP
+        inp = INPUT(type=INPUT_KEYBOARD,
+                    u=_INPUTUNION(ki=KEYBDINPUT(0, scan, flags, 0, 0)))
+        if _user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT)) != 1:
+            raise ctypes.WinError(ctypes.get_last_error())
 
-_user32 = ctypes.WinDLL("user32", use_last_error=True)
-_user32.SendInput.argtypes = (wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int)
-_user32.SendInput.restype = wintypes.UINT
+    def keyboard_permission_ok(prompt=False):
+        return True                    # Windows needs no permission to inject
 
-# Scancode set 1.  (scancode, is_extended) -- right Ctrl is an E0-extended key,
-# which is how the browser tells "ControlRight" from "ControlLeft".
-KEYMAP = {
-    "lctrl":    (0x1D, False),
-    "rctrl":    (0x1D, True),
-    "lbracket": (0x1A, False),
-    "rbracket": (0x1B, False),
-    "space":    (0x39, False),
-    "lshift":   (0x2A, False),
-    "z":        (0x2C, False),
-    "x":        (0x2D, False),
-    "comma":    (0x33, False),
-    "period":   (0x34, False),
-    "slash":    (0x35, False),
-}
+elif IS_MAC:
+    _AS = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/"
+                                  "ApplicationServices.framework/"
+                                  "ApplicationServices")
+    _CF = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/"
+                                  "CoreFoundation.framework/CoreFoundation")
+    _AS.CGEventCreateKeyboardEvent.argtypes = (ctypes.c_void_p,
+                                               ctypes.c_uint16, ctypes.c_bool)
+    _AS.CGEventCreateKeyboardEvent.restype = ctypes.c_void_p
+    _AS.CGEventSetType.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
+    _AS.CGEventSetFlags.argtypes = (ctypes.c_void_p, ctypes.c_uint64)
+    _AS.CGEventPost.argtypes = (ctypes.c_uint32, ctypes.c_void_p)
+    _CF.CFRelease.argtypes = (ctypes.c_void_p,)
+    _AS.AXIsProcessTrusted.restype = ctypes.c_bool
+    _AS.AXIsProcessTrustedWithOptions.argtypes = (ctypes.c_void_p,)
+    _AS.AXIsProcessTrustedWithOptions.restype = ctypes.c_bool
 
+    kCGHIDEventTap = 0
+    kCGEventFlagsChanged = 12
+    kCGEventFlagMaskControl = 0x00040000
+    NX_DEVICELCTLKEYMASK = 0x00000001      # left/right bits are how browsers
+    NX_DEVICERCTLKEYMASK = 0x00002000      # tell ControlLeft from ControlRight
 
-def send_key(scan, extended, keyup):
-    """Inject one keyboard event by scancode."""
-    flags = KEYEVENTF_SCANCODE
-    if extended:
-        flags |= KEYEVENTF_EXTENDEDKEY
-    if keyup:
-        flags |= KEYEVENTF_KEYUP
-    inp = INPUT(type=INPUT_KEYBOARD,
-                u=_INPUTUNION(ki=KEYBDINPUT(0, scan, flags, 0, 0)))
-    if _user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT)) != 1:
-        raise ctypes.WinError(ctypes.get_last_error())
+    # (virtual keycode, device modifier bit -- 0 for ordinary keys)
+    KEYMAP = {
+        "lctrl":    (0x3B, NX_DEVICELCTLKEYMASK),
+        "rctrl":    (0x3E, NX_DEVICERCTLKEYMASK),
+        "lbracket": (0x21, 0),
+        "rbracket": (0x1E, 0),
+        "space":    (0x31, 0),
+        "lshift":   (0x38, 0),
+        "z":        (0x06, 0),
+        "x":        (0x07, 0),
+        "comma":    (0x2B, 0),
+        "period":   (0x2F, 0),
+        "slash":    (0x2C, 0),
+    }
+
+    _held_mods = 0      # device bits of the Ctrl keys we're holding down
+
+    def _mod_flags():
+        return (kCGEventFlagMaskControl | _held_mods) if _held_mods else 0
+
+    def send_key(keycode, mod_bit, keyup):
+        """Post one keyboard event. Modifier keys (Ctrl) go out as a
+        flags-changed event carrying the full held-modifier state, so a
+        dit+dah squeeze on Left+Right Ctrl reads correctly in the browser."""
+        global _held_mods
+        ev = _AS.CGEventCreateKeyboardEvent(None, keycode, not keyup)
+        if not ev:
+            raise OSError("CGEventCreateKeyboardEvent failed")
+        try:
+            if mod_bit:
+                _held_mods = (_held_mods & ~mod_bit) if keyup \
+                    else (_held_mods | mod_bit)
+                _AS.CGEventSetType(ev, kCGEventFlagsChanged)
+            _AS.CGEventSetFlags(ev, _mod_flags())
+            _AS.CGEventPost(kCGHIDEventTap, ev)
+        finally:
+            _CF.CFRelease(ev)
+
+    def keyboard_permission_ok(prompt=False):
+        """macOS only delivers synthetic keys from apps the user has allowed
+        under Privacy & Security -> Accessibility. With prompt=True, ask the
+        system to show its 'allow this app' dialog."""
+        if not prompt:
+            return bool(_AS.AXIsProcessTrusted())
+        key = ctypes.c_void_p.in_dll(_AS, "kAXTrustedCheckOptionPrompt")
+        true = ctypes.c_void_p.in_dll(_CF, "kCFBooleanTrue")
+        _CF.CFDictionaryCreate.restype = ctypes.c_void_p
+        _CF.CFDictionaryCreate.argtypes = (
+            ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p),
+            ctypes.POINTER(ctypes.c_void_p), ctypes.c_long,
+            ctypes.c_void_p, ctypes.c_void_p)
+        keys = (ctypes.c_void_p * 1)(key.value)
+        vals = (ctypes.c_void_p * 1)(true.value)
+        opts = _CF.CFDictionaryCreate(
+            None, keys, vals, 1,
+            ctypes.addressof(ctypes.c_char.in_dll(
+                _CF, "kCFTypeDictionaryKeyCallBacks")),
+            ctypes.addressof(ctypes.c_char.in_dll(
+                _CF, "kCFTypeDictionaryValueCallBacks")))
+        try:
+            return bool(_AS.AXIsProcessTrustedWithOptions(opts))
+        finally:
+            _CF.CFRelease(opts)
+
+else:
+    KEYMAP = {name: (0, 0) for name in (
+        "lctrl", "rctrl", "lbracket", "rbracket", "space", "lshift",
+        "z", "x", "comma", "period", "slash")}
+
+    def send_key(a, b, keyup):
+        raise NotImplementedError("keyboard output is Windows / macOS only")
+
+    def keyboard_permission_ok(prompt=False):
+        return False
 
 
 # --------------------------------------------------------------------------

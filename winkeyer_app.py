@@ -96,12 +96,25 @@ APP_ICON = _resource(os.path.join("icon", "windows", "PaddleCAT-app.ico"))
 
 
 def _profile_path():
+    if wk.IS_MAC:
+        return (Path.home() / "Library" / "Application Support" / "PaddleCAT"
+                / "profile.json")
     base = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
     root = Path(base) if base else Path.home()
     return root / "WinKeyerKeyboard" / "profile.json"
 
 
 PROFILE_PATH = _profile_path()
+
+
+def _serial_ports():
+    """Candidate WinKeyer ports. On macOS keep only /dev/cu.* (the call-out
+    twin of each /dev/tty.*) and skip Bluetooth / debug-console devices."""
+    ports = [p.device for p in serial.tools.list_ports.comports()]
+    if wk.IS_MAC:
+        ports = [p for p in ports if p.startswith("/dev/cu.")
+                 and "Bluetooth" not in p and "debug" not in p.lower()]
+    return ports
 PROFILE_KEYS = ["CALL", "NAME", "QTH", "STATE", "RIG", "ANT"]
 
 
@@ -812,7 +825,7 @@ class App(ctk.CTk):
         # the line length (see _trainer_font_size).
         ctk.CTkLabel(p, text="Send:", anchor="w",
                      text_color=T.TEXT_SOFT).pack(fill="x", padx=14, pady=(10, 0))
-        self.t_target_font = ctk.CTkFont(family="Consolas", size=34,
+        self.t_target_font = ctk.CTkFont(family=T.MONO_FAMILY, size=34,
                                          weight="bold")
         # A read-only textbox rather than a label so the matched part of the
         # line can light up lime as you send it.
@@ -830,7 +843,7 @@ class App(ctk.CTk):
         # Your copy (RX) -- same size as the target
         ctk.CTkLabel(p, text="RX (your copy):", anchor="w",
                      text_color=T.TEXT_SOFT).pack(fill="x", padx=14, pady=(14, 0))
-        self.t_copy_font = ctk.CTkFont(family="Consolas", size=34)
+        self.t_copy_font = ctk.CTkFont(family=T.MONO_FAMILY, size=34)
         self.t_copy_lbl = ctk.CTkLabel(
             p, text="", anchor="w", justify="left", wraplength=500,
             text_color=T.TEXT, font=self.t_copy_font)
@@ -901,7 +914,7 @@ class App(ctk.CTk):
         # Conversation log
         self.q_log = ctk.CTkTextbox(
             p, height=260,
-            font=ctk.CTkFont(family="Consolas", size=15),
+            font=ctk.CTkFont(family=T.MONO_FAMILY, size=15),
             wrap="word")
         self.q_log.pack(fill="x", padx=14, pady=(4, 6))
         self.q_log.configure(state="disabled")
@@ -1029,6 +1042,8 @@ class App(ctk.CTk):
         # Keyboard output goes off everywhere but the Play Online tab so the
         # synthesized keystrokes don't get typed into our own window.
         self.ctrl.output_enabled = (tab == PLAY_TAB)
+        if tab == PLAY_TAB and self.running:
+            self._check_keyboard_permission()
         if self.running and self._prev_tab == PLAY_TAB and tab != PLAY_TAB:
             self._set_status("Keyboard output paused. Go back to Play Online "
                              "to use your paddle in games.", T.WARN)
@@ -1088,6 +1103,8 @@ class App(ctk.CTk):
             self.running, self.busy = True, False
             self._sync_enabled()
             self._set_status(f"Running on {ev[1]}.", T.LIME)
+            if self.tabs.get() == PLAY_TAB:
+                self._check_keyboard_permission()
             self._save_state()                # remember a port that actually worked
         elif tag == "startfail":
             self.running, self.busy = False, False
@@ -1136,13 +1153,28 @@ class App(ctk.CTk):
         threading.Thread(target=self._start_worker, args=(port,),
                          daemon=True).start()
 
+    def _check_keyboard_permission(self):
+        """macOS drops synthetic keystrokes from apps not allowed under
+        Privacy & Security -> Accessibility; ask once, and say so plainly."""
+        if wk.keyboard_permission_ok():
+            return True
+        if not getattr(self, "_asked_permission", False):
+            self._asked_permission = True
+            wk.keyboard_permission_ok(prompt=True)
+        self._set_status(
+            "To play online games, allow PaddleCAT in System Settings → "
+            "Privacy & Security → Accessibility, then restart PaddleCAT.",
+            T.WARN)
+        return False
+
     def _start_worker(self, port):
         try:
             self.ctrl.start(port)
             self.events.put(("started", port))
         except serial.SerialException as exc:
             msg = ("Port is in use — close other software that has it "
-                   "(a logger, rig control)." if "Access is denied" in str(exc)
+                   "(a logger, rig control)." if ("Access is denied" in str(exc)
+                                              or "Resource busy" in str(exc))
                    else f"Could not open {port}: {exc}")
             self.events.put(("startfail", msg))
         except Exception as exc:                              # noqa: BLE001
@@ -1169,7 +1201,7 @@ class App(ctk.CTk):
 
     def _detect_worker(self):
         found = None
-        ports = [p.device for p in serial.tools.list_ports.comports()]
+        ports = _serial_ports()
         for dev in ports:
             ver, _ = wk.probe(dev)
             if ver is not None and 0x09 <= ver <= 0x40:
@@ -1599,7 +1631,7 @@ class App(ctk.CTk):
 
     # -- helpers -----------------------------------------------------------
     def _refresh_ports(self):
-        self._set_ports([p.device for p in serial.tools.list_ports.comports()])
+        self._set_ports(_serial_ports())
 
     def _set_ports(self, ports):
         values = ports or ["(no ports)"]
@@ -1610,7 +1642,7 @@ class App(ctk.CTk):
     def _auto_select_port(self):
         """On launch, prefer the port we used last time if it's still here;
         otherwise probe the bus to find a WinKeyer automatically."""
-        ports = [p.device for p in serial.tools.list_ports.comports()]
+        ports = _serial_ports()
         last = self.settings.get("last_port", "")
         if last and last in ports:
             self.port_var.set(last)
