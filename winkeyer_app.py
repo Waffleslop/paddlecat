@@ -41,6 +41,7 @@ import drills
 import invaders
 import morse_decode
 import qsos
+import theme as T
 
 
 # Keys offered in the UI:  display label -> winkeyer_vail.KEYMAP name
@@ -399,11 +400,10 @@ class App(ctk.CTk):
     AUTO_NEXT_MS = 1200
 
     def __init__(self):
+        T.apply()                       # must precede the root window
         super().__init__()
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
         self.title("PaddleCAT - WinKeyer CW Trainer")
-        self.geometry("560x760")
+        self.geometry("560x800")
         self.resizable(False, False)
 
         self.events = queue.Queue()
@@ -422,9 +422,11 @@ class App(ctk.CTk):
         self.t_streak = 0
         self._auto_next_id = None
 
+        self._build_header()
+
         # Tabs
         self.tabs = ctk.CTkTabview(self, height=660)
-        self.tabs.pack(fill="both", expand=True, padx=10, pady=(10, 0))
+        self.tabs.pack(fill="both", expand=True, padx=10, pady=(0, 0))
         self.tabs.add("Bridge")
         self.tabs.add("Trainer")
         self.tabs.add("QSO Sim")
@@ -448,7 +450,7 @@ class App(ctk.CTk):
         self._build_profile(self.tabs.tab("Profile"))
 
         # Shared status line at bottom
-        self.status = ctk.CTkLabel(self, text="Idle.", text_color="#999",
+        self.status = ctk.CTkLabel(self, text="Idle.", text_color=T.MUTED,
                                    wraplength=480, justify="left")
         self.status.pack(side="bottom", fill="x", padx=16, pady=(4, 10))
 
@@ -458,6 +460,20 @@ class App(ctk.CTk):
         self._next_prompt(reset_score=True)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(self.POLL_MS, self._poll)
+
+    # -- HEADER ------------------------------------------------------------
+    def _build_header(self):
+        """PADDLE / CAT wordmark in the icon's colours."""
+        head = ctk.CTkFrame(self, fg_color="transparent")
+        head.pack(fill="x", padx=16, pady=(10, 0))
+        mark = ctk.CTkFont(family=T.HEADING_FAMILY, size=26, weight="bold")
+        ctk.CTkLabel(head, text="PADDLE", font=mark,
+                     text_color=T.MAGENTA).pack(side="left")
+        ctk.CTkLabel(head, text="CAT", font=mark,
+                     text_color=T.LIME).pack(side="left", padx=(6, 0))
+        ctk.CTkLabel(head, text="WinKeyer CW Trainer", text_color=T.DIM,
+                     font=ctk.CTkFont(family=T.HEADING_FAMILY, size=13)
+                     ).pack(side="left", padx=(12, 0), pady=(8, 0))
 
     # -- BRIDGE TAB --------------------------------------------------------
     def _build_bridge(self, p):
@@ -491,7 +507,7 @@ class App(ctk.CTk):
             command=lambda _=None: self._sync_enabled())
         self.mode_seg.pack(side="left", padx=8)
 
-        self.hint = ctk.CTkLabel(p, text="", text_color="#7fb0ff",
+        self.hint = ctk.CTkLabel(p, text="", text_color=T.MAGENTA_SOFT,
                                  wraplength=480, justify="left")
         self.hint.pack(fill="x", padx=14, pady=(4, 0))
 
@@ -580,9 +596,9 @@ class App(ctk.CTk):
         row = ctk.CTkFrame(p, fg_color="transparent")
         row.pack(fill="x", padx=14, pady=(8, 0))
         ctk.CTkLabel(row, text="Activity:").pack(side="left")
-        self.dit_dot = ctk.CTkLabel(row, text="● dit", text_color="#555")
+        self.dit_dot = ctk.CTkLabel(row, text="● dit", text_color=T.FAINT)
         self.dit_dot.pack(side="left", padx=(8, 0))
-        self.dah_dot = ctk.CTkLabel(row, text="● dah", text_color="#555")
+        self.dah_dot = ctk.CTkLabel(row, text="● dah", text_color=T.FAINT)
         self.dah_dot.pack(side="left", padx=(8, 0))
 
     # -- TRAINER TAB -------------------------------------------------------
@@ -616,7 +632,7 @@ class App(ctk.CTk):
             command=lambda _=None: self._on_category())
         self.t_cat.pack(side="left", padx=8)
         self.t_score_lbl = ctk.CTkLabel(row, text="0 / 0   streak 0",
-                                        text_color="#bbb")
+                                        text_color=T.TEXT_SOFT)
         self.t_score_lbl.pack(side="right")
 
         # Sprint row (button + timer / best)
@@ -626,7 +642,7 @@ class App(ctk.CTk):
                                           width=170,
                                           command=self._on_sprint_action)
         self.t_sprint_btn.pack(side="left")
-        self.t_timer_lbl = ctk.CTkLabel(row, text="", text_color="#bbb")
+        self.t_timer_lbl = ctk.CTkLabel(row, text="", text_color=T.TEXT_SOFT)
         self.t_timer_lbl.pack(side="right")
 
         # Sprint state
@@ -638,7 +654,7 @@ class App(ctk.CTk):
         # Target -- the most important text in the app: big, auto-scaled to
         # the line length (see _trainer_font_size).
         ctk.CTkLabel(p, text="Send:", anchor="w",
-                     text_color="#bbb").pack(fill="x", padx=14, pady=(10, 0))
+                     text_color=T.TEXT_SOFT).pack(fill="x", padx=14, pady=(10, 0))
         self.t_target_font = ctk.CTkFont(family="Consolas", size=34,
                                          weight="bold")
         self.t_target_lbl = ctk.CTkLabel(
@@ -648,11 +664,11 @@ class App(ctk.CTk):
 
         # Your copy (RX) -- same size as the target
         ctk.CTkLabel(p, text="RX (your copy):", anchor="w",
-                     text_color="#bbb").pack(fill="x", padx=14, pady=(14, 0))
+                     text_color=T.TEXT_SOFT).pack(fill="x", padx=14, pady=(14, 0))
         self.t_copy_font = ctk.CTkFont(family="Consolas", size=34)
         self.t_copy_lbl = ctk.CTkLabel(
             p, text="", anchor="w", justify="left", wraplength=500,
-            text_color="#dddddd", font=self.t_copy_font)
+            text_color=T.TEXT, font=self.t_copy_font)
         self.t_copy_lbl.pack(fill="x", padx=14)
 
         # How much of the target the buffer currently matches
@@ -662,7 +678,7 @@ class App(ctk.CTk):
 
         # Status
         self.t_status_lbl = ctk.CTkLabel(p, text="▶  Send the line above.",
-                                         text_color="#bbb",
+                                         text_color=T.TEXT_SOFT,
                                          font=ctk.CTkFont(size=14))
         self.t_status_lbl.pack(fill="x", padx=14, pady=(14, 4))
 
@@ -679,7 +695,7 @@ class App(ctk.CTk):
         # Connection hint
         self.t_conn_hint = ctk.CTkLabel(
             p, text="(Press START on the Bridge tab to begin drilling.)",
-            text_color="#e7a55a", wraplength=480, justify="left")
+            text_color=T.WARN, wraplength=480, justify="left")
         self.t_conn_hint.pack(fill="x", padx=14, pady=(8, 0))
         ctk.CTkLabel(
             p, text="Tips: uncheck 'Mute WinKeyer sidetone' on the Bridge tab "
@@ -688,7 +704,7 @@ class App(ctk.CTk):
                     "Send HH (8 dits) to wipe the attempt, or just keep "
                     "going: it counts when the END of what you sent matches "
                     "the target.",
-            text_color="#777", wraplength=480, justify="left"
+            text_color=T.DIM, wraplength=480, justify="left"
         ).pack(fill="x", padx=14, pady=(2, 0))
 
         self._on_trainer_mode()             # set initial enable state
@@ -712,7 +728,7 @@ class App(ctk.CTk):
 
         # Status
         self.q_status_lbl = ctk.CTkLabel(
-            p, text="Press Start to begin a QSO.", text_color="#bbb",
+            p, text="Press Start to begin a QSO.", text_color=T.TEXT_SOFT,
             wraplength=480, justify="left",
             font=ctk.CTkFont(size=14))
         self.q_status_lbl.pack(fill="x", padx=14, pady=(8, 4))
@@ -739,7 +755,7 @@ class App(ctk.CTk):
         ctk.CTkLabel(
             p, text="(Press START on the Bridge tab first, and UNCHECK Mute "
                     "above so you can hear the other op.)",
-            text_color="#e7a55a", wraplength=480, justify="left"
+            text_color=T.WARN, wraplength=480, justify="left"
         ).pack(fill="x", padx=14, pady=(4, 0))
 
         # State
@@ -755,7 +771,7 @@ class App(ctk.CTk):
         ctk.CTkLabel(
             p, text="Your details fill into the drills "
                     "(e.g. {CALL}, {NAME}, {QTH}).",
-            text_color="#bbb", wraplength=480, justify="left"
+            text_color=T.TEXT_SOFT, wraplength=480, justify="left"
         ).pack(fill="x", padx=14, pady=(14, 6))
 
         self.profile_vars = {}
@@ -778,12 +794,12 @@ class App(ctk.CTk):
 
         btn = ctk.CTkButton(p, text="Save profile", command=self._on_save_profile)
         btn.pack(anchor="w", padx=14, pady=(14, 4))
-        self.profile_status = ctk.CTkLabel(p, text="", text_color="#999")
+        self.profile_status = ctk.CTkLabel(p, text="", text_color=T.MUTED)
         self.profile_status.pack(anchor="w", padx=14)
 
         ctk.CTkLabel(
             p, text=f"Saved to: {PROFILE_PATH}",
-            text_color="#666", wraplength=480, justify="left"
+            text_color=T.DIM, wraplength=480, justify="left"
         ).pack(fill="x", padx=14, pady=(20, 0))
 
     def _on_save_profile(self):
@@ -792,7 +808,7 @@ class App(ctk.CTk):
         ok = save_profile(self.profile)
         self.profile_status.configure(
             text="Saved." if ok else "Could not save profile.",
-            text_color="#2ecc71" if ok else "#e74c3c")
+            text_color=T.LIME if ok else T.DANGER)
         # Re-render the current trainer prompt with new profile values.
         if self.t_template:
             self.t_target = drills.render(self.t_template, self.profile)
@@ -824,16 +840,16 @@ class App(ctk.CTk):
         self.action_btn.configure(
             state="disabled" if self.busy else "normal",
             text="STOP" if self.running else "START",
-            fg_color="#b03030" if self.running else "#1f6aa5")
+            fg_color=T.STOP if self.running else T.GO)
         # Trainer hint visibility
         if self.running:
             self.t_conn_hint.configure(
                 text="Drilling on " + (self.port_var.get() or "WinKeyer"),
-                text_color="#2ecc71")
+                text_color=T.LIME)
         else:
             self.t_conn_hint.configure(
                 text="(Press START on the Bridge tab to begin drilling.)",
-                text_color="#e7a55a")
+                text_color=T.WARN)
 
     # -- tabs --------------------------------------------------------------
     def _on_tab_change(self):
@@ -866,8 +882,8 @@ class App(ctk.CTk):
         tag = ev[0]
         if tag == "levers":
             _, dit, dah = ev
-            self.dit_dot.configure(text_color="#2ecc71" if dit else "#555")
-            self.dah_dot.configure(text_color="#2ecc71" if dah else "#555")
+            self.dit_dot.configure(text_color=T.LIME if dit else T.FAINT)
+            self.dah_dot.configure(text_color=T.LIME if dah else T.FAINT)
         elif tag == "echo":
             # The WinKeyer's own decode -- the primary character source for
             # Trainer, QSO Sim and Invaders. Its firmware samples the levers
@@ -899,16 +915,16 @@ class App(ctk.CTk):
         elif tag == "started":
             self.running, self.busy = True, False
             self._sync_enabled()
-            self._set_status(f"Running on {ev[1]}.", "#2ecc71")
+            self._set_status(f"Running on {ev[1]}.", T.LIME)
             self._save_state()                # remember a port that actually worked
         elif tag == "startfail":
             self.running, self.busy = False, False
             self._sync_enabled()
-            self._set_status(ev[1], "#e74c3c")
+            self._set_status(ev[1], T.DANGER)
         elif tag == "stopped":
             self.running, self.busy = False, False
             self._sync_enabled()
-            self._set_status("Stopped — WinKeyer released.", "#999")
+            self._set_status("Stopped — WinKeyer released.", T.MUTED)
             self.game.on_bridge_stopped()
         elif tag == "detected":
             self._detect_done(ev[1], ev[2])
@@ -929,7 +945,7 @@ class App(ctk.CTk):
     def _begin_start(self):
         port = self.port_var.get()
         if not port or port.startswith("("):
-            self._set_status("Pick a COM port first (try Detect).", "#e74c3c")
+            self._set_status("Pick a COM port first (try Detect).", T.DANGER)
             return
         c = self.ctrl
         c.mode = "keyer" if self.mode_var.get() == "Keyer" else "paddle"
@@ -944,7 +960,7 @@ class App(ctk.CTk):
         c.sidetone_vol = self.vol_var.get().lower()
         self.busy = True
         self._sync_enabled()
-        self._set_status(f"Connecting to {port}…", "#999")
+        self._set_status(f"Connecting to {port}…", T.MUTED)
         threading.Thread(target=self._start_worker, args=(port,),
                          daemon=True).start()
 
@@ -963,7 +979,7 @@ class App(ctk.CTk):
     def _begin_stop(self):
         self.busy = True
         self._sync_enabled()
-        self._set_status("Stopping…", "#999")
+        self._set_status("Stopping…", T.MUTED)
         threading.Thread(target=self._stop_worker, daemon=True).start()
 
     def _stop_worker(self):
@@ -976,7 +992,7 @@ class App(ctk.CTk):
         if self.running or self.busy:
             return
         self.detect_btn.configure(state="disabled")
-        self._set_status("Detecting WinKeyer…", "#999")
+        self._set_status("Detecting WinKeyer…", T.MUTED)
         threading.Thread(target=self._detect_worker, daemon=True).start()
 
     def _detect_worker(self):
@@ -994,9 +1010,9 @@ class App(ctk.CTk):
         self.detect_btn.configure(state="normal")
         if found:
             self.port_var.set(found)
-            self._set_status(f"Found a WinKeyer on {found}.", "#2ecc71")
+            self._set_status(f"Found a WinKeyer on {found}.", T.LIME)
         else:
-            self._set_status("No WinKeyer found. Plugged in / free?", "#e74c3c")
+            self._set_status("No WinKeyer found. Plugged in / free?", T.DANGER)
 
     # -- live setting handlers --------------------------------------------
     def _on_speed(self, value):
@@ -1037,7 +1053,7 @@ class App(ctk.CTk):
         if reset_score:
             self.t_correct = self.t_attempted = self.t_streak = 0
         self.t_status_lbl.configure(text="▶  Send the line above.",
-                                    text_color="#bbb")
+                                    text_color=T.TEXT_SOFT)
         self.t_progress.set(0)
         self._update_trainer_view()
 
@@ -1051,7 +1067,7 @@ class App(ctk.CTk):
         self.t_buffer = ""
         self.ctrl.decoder_reset()
         self.t_status_lbl.configure(text="▶  Send the line above.",
-                                    text_color="#bbb")
+                                    text_color=T.TEXT_SOFT)
         self.t_progress.set(0)
         self._update_trainer_view()
 
@@ -1100,13 +1116,13 @@ class App(ctk.CTk):
 
     def _sprint_start(self):
         if not self.running:
-            self._set_status("Press START on the Bridge tab first.", "#e74c3c")
+            self._set_status("Press START on the Bridge tab first.", T.DANGER)
             return
         self.t_sprint_count = 0
         self.t_sprint_end_time = time.perf_counter() + 60.0
         self.t_sprint_running = True
         self.t_sprint_btn.configure(text="Stop Sprint",
-                                    fg_color="#b03030")
+                                    fg_color=T.STOP)
         self._next_prompt(reset_score=True)
         self._sprint_tick()
 
@@ -1132,17 +1148,17 @@ class App(ctk.CTk):
                 pass
             self._sprint_tick_id = None
         self.t_sprint_btn.configure(text="Start 60s Sprint",
-                                    fg_color="#1f6aa5")
+                                    fg_color=T.GO)
         if not silent:
             self.t_status_lbl.configure(text="Sprint stopped.",
-                                        text_color="#999")
+                                        text_color=T.MUTED)
         self._refresh_sprint_label()
 
     def _sprint_finish(self):
         self.t_sprint_running = False
         self._sprint_tick_id = None
         self.t_sprint_btn.configure(text="Start 60s Sprint",
-                                    fg_color="#1f6aa5")
+                                    fg_color=T.GO)
         cat = self.t_cat_var.get()
         best_dict = dict(self.settings.get("sprint_best", {}))
         best = best_dict.get(cat, 0)
@@ -1151,11 +1167,11 @@ class App(ctk.CTk):
             self.settings["sprint_best"] = best_dict
             save_settings(self.settings)
             msg = f"⏱ Time! {self.t_sprint_count} correct — NEW BEST!"
-            color = "#2ecc71"
+            color = T.LIME
         else:
             msg = (f"⏱ Time! {self.t_sprint_count} correct"
                    + (f" (best: {best})" if best else ""))
-            color = "#bbb"
+            color = T.TEXT_SOFT
         self.t_status_lbl.configure(text=msg, text_color=color)
         self.t_timer_lbl.configure(text=f"Best: {best_dict.get(cat, 0)}")
 
@@ -1188,7 +1204,7 @@ class App(ctk.CTk):
             self.t_buffer = ""
             self.t_status_lbl.configure(
                 text="✗  HH — copy cleared, send the line again.",
-                text_color="#e7a55a")
+                text_color=T.WARN)
             self.t_progress.set(0)
             self._update_trainer_view()
 
@@ -1230,15 +1246,15 @@ class App(ctk.CTk):
                 delay = 80
             else:
                 delay = self.AUTO_NEXT_MS
-            self.t_copy_lbl.configure(text_color="#2ecc71")
+            self.t_copy_lbl.configure(text_color=T.LIME)
             self.t_status_lbl.configure(text="✓  Correct!",
-                                        text_color="#2ecc71")
+                                        text_color=T.LIME)
             self.t_progress.set(1.0)
             self._auto_next_id = self.after(delay, self._next_prompt)
         else:
-            self.t_copy_lbl.configure(text_color="#dddddd")
+            self.t_copy_lbl.configure(text_color=T.TEXT)
             self.t_status_lbl.configure(text="…sending…",
-                                        text_color="#bbb")
+                                        text_color=T.TEXT_SOFT)
             self.t_progress.set(self._match_progress(norm_b, norm_t))
         self._update_trainer_view()
 
@@ -1279,7 +1295,7 @@ class App(ctk.CTk):
         self.q_log.see("end")
         self.q_log.configure(state="disabled")
 
-    def _qso_status(self, text, color="#bbb"):
+    def _qso_status(self, text, color=T.TEXT_SOFT):
         self.q_status_lbl.configure(text=text, text_color=color)
 
     def _qso_action(self):
@@ -1290,7 +1306,7 @@ class App(ctk.CTk):
 
     def _qso_start(self):
         if not self.running:
-            self._qso_status("Press START on the Bridge tab first.", "#e74c3c")
+            self._qso_status("Press START on the Bridge tab first.", T.DANGER)
             return
         scn = qsos.SCENARIOS.get(self.q_scn_var.get())
         if not scn:
@@ -1302,7 +1318,7 @@ class App(ctk.CTk):
         self.q_log.configure(state="normal")
         self.q_log.delete("1.0", "end")
         self.q_log.configure(state="disabled")
-        self.q_start_btn.configure(text="Stop QSO", fg_color="#b03030")
+        self.q_start_btn.configure(text="Stop QSO", fg_color=T.STOP)
         self._qso_play_step()
 
     def _qso_play_step(self):
@@ -1311,7 +1327,7 @@ class App(ctk.CTk):
         self.q_seen_busy = False
         self.q_buffer = ""
         self._qso_log_write(f"🎧 {self.q_theircall}: {step['send']}\n")
-        self._qso_status(f"🎧 Listening to {self.q_theircall}…", "#bbb")
+        self._qso_status(f"🎧 Listening to {self.q_theircall}…", T.TEXT_SOFT)
         # Trailing space helps the WinKeyer cleanly end the last letter.
         self.ctrl.send_text(step["send"] + " ")
 
@@ -1324,9 +1340,9 @@ class App(ctk.CTk):
 
     def _qso_complete(self):
         self.q_state = "complete"
-        self.q_start_btn.configure(text="Start QSO", fg_color="#1f6aa5")
+        self.q_start_btn.configure(text="Start QSO", fg_color=T.GO)
         self._qso_log_write("\n✓ QSO complete!\n")
-        self._qso_status("✓ QSO complete! Press Start for another.", "#2ecc71")
+        self._qso_status("✓ QSO complete! Press Start for another.", T.LIME)
 
     def _qso_skip(self):
         if self.q_state == "listening":
@@ -1345,9 +1361,9 @@ class App(ctk.CTk):
             if not silent:
                 self._qso_log_write("\n— stopped —\n")
         self.q_state = "idle"
-        self.q_start_btn.configure(text="Start QSO", fg_color="#1f6aa5")
+        self.q_start_btn.configure(text="Start QSO", fg_color=T.GO)
         if was_active and not silent:
-            self._qso_status("Stopped. Press Start for another QSO.", "#999")
+            self._qso_status("Stopped. Press Start for another QSO.", T.MUTED)
 
     def _qso_handle_busy(self, busy):
         if self.q_state != "sending":
@@ -1359,7 +1375,7 @@ class App(ctk.CTk):
             self.q_state = "listening"
             step = self.q_steps[self.q_idx]
             self._qso_log_write("📡 You: ")
-            self._qso_status(f"📡 Your turn — {step['hint']}", "#7fb0ff")
+            self._qso_status(f"📡 Your turn — {step['hint']}", T.MAGENTA_SOFT)
 
     def _qso_handle_echo(self, ch):
         if self.q_state != "listening":
@@ -1388,14 +1404,14 @@ class App(ctk.CTk):
         last = self.settings.get("last_port", "")
         if last and last in ports:
             self.port_var.set(last)
-            self._set_status(f"Ready — last used {last}. Press START.", "#999")
+            self._set_status(f"Ready — last used {last}. Press START.", T.MUTED)
         elif ports:
-            self._set_status("Looking for a WinKeyer…", "#999")
+            self._set_status("Looking for a WinKeyer…", T.MUTED)
             self.detect_btn.configure(state="disabled")
             threading.Thread(target=self._detect_worker, daemon=True).start()
         else:
             self._set_status("No serial ports found. Plug in the WinKeyer.",
-                             "#e7a55a")
+                             T.WARN)
 
     def _current_settings(self):
         port = self.port_var.get()
@@ -1423,7 +1439,7 @@ class App(ctk.CTk):
         self.settings = self._current_settings()
         save_settings(self.settings)
 
-    def _set_status(self, text, color="#999"):
+    def _set_status(self, text, color=T.MUTED):
         self.status.configure(text=text, text_color=color)
 
     def _on_close(self):

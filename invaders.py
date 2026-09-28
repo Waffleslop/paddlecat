@@ -24,6 +24,7 @@ import tkinter as tk
 import tkinter.font as tkfont
 
 import drills
+import theme as T
 
 DEBUG = os.environ.get("WKB_DEBUG") == "1"
 
@@ -45,16 +46,18 @@ BUFFER_CAP     = 24          # decoded chars kept for matching
 TURRET_LINE    = CANVAS_H - 46   # a target this low has landed
 
 # -- colors -----------------------------------------------------------------
-C_BG      = "#101014"
-C_STAR    = "#2a2a3a"
-C_TURRET  = "#7fb0ff"
-C_TEXT    = "#dddddd"
-C_WARN    = "#e7a55a"
-C_DANGER  = "#e74c3c"
-C_MATCH   = "#2ecc71"
-C_BULLET  = "#ffd166"
-C_BOOM    = ("#ffd166", "#ff6b35")
-C_DIM     = "#666677"
+C_BG      = "#0d0418"         # a shade deeper than the window, like the icon
+C_STAR    = "#2a1840"
+C_SCAN    = "#170a26"         # faint CRT scanlines, as on the icon
+C_TURRET  = T.MAGENTA
+C_TEXT    = T.TEXT
+C_WARN    = T.WARN
+C_DANGER  = T.DANGER
+C_MATCH   = T.LIME
+C_BULLET  = T.LIME
+C_BOOM    = (T.LIME, T.MAGENTA)
+C_DIM     = T.DIM
+C_GLOW    = "#5a1257"         # dim magenta halo drawn under neon text
 
 # Content mixes: (drills category, weight). Single tokens are pulled out of
 # the rendered drill lines.
@@ -137,7 +140,7 @@ class InvadersGame:
                                           values=list(MIXES), width=150,
                                           command=self._on_mix)
         self.mix_menu.pack(side="left", padx=8)
-        self.best_lbl = ctk.CTkLabel(row, text="", text_color="#bbb")
+        self.best_lbl = ctk.CTkLabel(row, text="", text_color=T.TEXT_SOFT)
         self.best_lbl.pack(side="right")
 
         self.canvas = tk.Canvas(parent, width=CANVAS_W, height=CANVAS_H,
@@ -196,7 +199,7 @@ class InvadersGame:
         self._last_tick = now
         self._last_char_t = now
         self._next_spawn = now + 1.0
-        self.btn.configure(text="Pause", fg_color="#b03030")
+        self.btn.configure(text="Pause", fg_color=T.STOP)
         self.mix_menu.configure(state="disabled")
         self._draw_hud()
         self._flash_text("GET READY", 1.0)
@@ -210,7 +213,7 @@ class InvadersGame:
             return
         self.state = "paused"
         self._cancel()
-        self.btn.configure(text="Resume", fg_color="#1f6aa5")
+        self.btn.configure(text="Resume", fg_color=T.GO)
         sub = reason or ("Switched tab" if auto else "")
         self._show_overlay("PAUSED", sub + ("\n" if sub else "")
                            + "Press Resume to continue")
@@ -224,7 +227,7 @@ class InvadersGame:
         self._hide_overlay()
         self.state = "playing"
         self._last_tick = time.perf_counter()
-        self.btn.configure(text="Pause", fg_color="#b03030")
+        self.btn.configure(text="Pause", fg_color=T.STOP)
         if self.debug_keys:
             self.canvas.focus_set()
         self._schedule()
@@ -233,7 +236,7 @@ class InvadersGame:
         self._cancel()
         self.state = "idle"
         self._clear_field()
-        self.btn.configure(text="Start", fg_color="#1f6aa5")
+        self.btn.configure(text="Start", fg_color=T.GO)
         self.mix_menu.configure(state="normal")
         self._show_idle()
 
@@ -465,8 +468,8 @@ class InvadersGame:
         if self._wave_flash:
             self.canvas.delete(self._wave_flash[0])
         item = self.canvas.create_text(
-            CANVAS_W / 2, CANVAS_H / 2, text=text, fill=C_TURRET,
-            font=("Consolas", 28, "bold"))
+            CANVAS_W / 2, CANVAS_H / 2, text=text, fill=C_MATCH,
+            font=(T.HEADING_FAMILY, 28, "bold"))
         self._wave_flash = (item, time.perf_counter() + secs)
 
     # -- highlight / buffer row --------------------------------------------
@@ -492,13 +495,16 @@ class InvadersGame:
         if flash:
             self.buf_lbl.configure(text=flash, text_color=C_MATCH)
         elif self.buffer:
-            self.buf_lbl.configure(text=self.buffer, text_color="#ffffff")
+            self.buf_lbl.configure(text=self.buffer, text_color=T.TEXT)
         else:
             self.buf_lbl.configure(text="KEY A FALLING WORD TO FIRE",
                                    text_color=C_DIM)
 
     # -- drawing ------------------------------------------------------------
     def _draw_stars(self):
+        for y in range(0, CANVAS_H, 3):
+            self.canvas.create_line(0, y, CANVAS_W, y, fill=C_SCAN,
+                                    tags="scan")
         for _ in range(40):
             x = random.uniform(0, CANVAS_W)
             y = random.uniform(0, CANVAS_H)
@@ -548,14 +554,22 @@ class InvadersGame:
         self.canvas.create_rectangle(0, 0, CANVAS_W, CANVAS_H, fill=C_BG,
                                      stipple="gray50", outline="",
                                      tags="overlay")
-        self.canvas.create_text(CANVAS_W / 2, CANVAS_H / 2 - 30, text=title,
-                                fill=C_TEXT, font=("Consolas", 30, "bold"),
-                                tags="overlay")
+        ty = CANVAS_H / 2 - (70 if subtitle else 30)
+        self._neon_text(CANVAS_W / 2, ty, title, T.MAGENTA,
+                        (T.HEADING_FAMILY, 32, "bold"), tags="overlay")
         if subtitle:
-            self.canvas.create_text(CANVAS_W / 2, CANVAS_H / 2 + 24,
-                                    text=subtitle, fill="#aaaaaa",
-                                    justify="center",
+            self.canvas.create_text(CANVAS_W / 2, CANVAS_H / 2 - 36,
+                                    text=subtitle, fill=T.TEXT_SOFT,
+                                    justify="center", anchor="n",
                                     font=("Consolas", 13), tags="overlay")
+
+    def _neon_text(self, x, y, text, color, font, **kw):
+        """Text with a soft halo underneath, echoing the icon's glow."""
+        for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2)):
+            self.canvas.create_text(x + dx, y + dy, text=text, fill=C_GLOW,
+                                    font=font, **kw)
+        return self.canvas.create_text(x, y, text=text, fill=color,
+                                       font=font, **kw)
 
     def _hide_overlay(self):
         self.canvas.delete("overlay")
@@ -577,7 +591,7 @@ class InvadersGame:
         new_best = self.score > best
         if new_best:
             self.set_best(mix, self.score)
-        self.btn.configure(text="Start", fg_color="#1f6aa5")
+        self.btn.configure(text="Start", fg_color=T.GO)
         self.mix_menu.configure(state="normal")
         self._refresh_best()
         self._show_overlay(
@@ -606,7 +620,7 @@ class InvadersGame:
 if __name__ == "__main__":
     import customtkinter as ctk
 
-    ctk.set_appearance_mode("dark")
+    T.apply()
     root = ctk.CTk()
     root.title("Morse Invaders — standalone test")
     root.geometry("560x580")
