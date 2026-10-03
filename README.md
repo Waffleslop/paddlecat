@@ -20,8 +20,10 @@ sending, runs drills and simulated QSOs, and has its own arcade game.
 </p>
 <p align="center"><sub>Play Online &nbsp;·&nbsp; Trainer &nbsp;·&nbsp; PaddleCAT Invaders</sub></p>
 
-> **You need:** a Windows PC and a K1EL **WinKeyer 3** (WK3, or a WKUSB with
-> WK3 firmware) with your paddle plugged in. Tested on a K1EL WK3.1.
+> **You need:** a Windows PC and a K1EL **WinKeyer** with your paddle plugged
+> in. Tested on a K1EL WK3.1. The original WinKeyer (WK1) and WinKeyer 2 are
+> supported from 1.2.1 but not yet tested on real hardware. If you have one,
+> please tell us how it goes.
 
 ## Download and install
 
@@ -136,6 +138,13 @@ over USB (1200 baud), and the app injects keystrokes through the Windows
 `SendInput` API. Scoring uses the WinKeyer's paddle echo, which is decoded in
 firmware. An app-side decoder (`morse_decode.py`) adds merged BK, the HH wipe
 and a measured-WPM estimate. Sending is comfortable up to about 20–25 WPM.
+
+The app reads the chip's revision byte and adapts. A WinKeyer 2 uses WK2
+mode and its own paddle-status bit. The original WinKeyer 1 can't report its
+levers, so the app polls its *Paddle A2D* diagnostic (Admin 5), about 50
+readings a second, and maps the paddle voltage to dit/dah. On WK1 the
+app's decoder does the scoring, and the keyer's own settings are put back
+when you stop.
 
 `winkeyer_vail.py` is also a command-line diagnostic tool:
 
