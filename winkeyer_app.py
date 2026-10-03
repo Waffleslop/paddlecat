@@ -175,6 +175,8 @@ class Controller:
         self._keyer = None
         self._shadow = None            # paddle-mode keyer that only decodes
         self.decoder = None            # app-side Morse decoder
+        self._wk1 = None               # WK1Poller when the keyer is a WK1
+        self.gen = None                # chip generation: 1, 2 or 3
         self.running = False
         # settings (set by the GUI before start; live ones noted)
         self.mode = "keyer"            # "keyer" | "paddle"
@@ -196,27 +198,41 @@ class Controller:
     def start(self, port):
         """Open the WinKeyer and begin translating. Raises on failure."""
         ser = wk.open_wk(port)
-        # paddle_echo=True makes the WinKeyer send the decoded ASCII of what
-        # you key on the paddle -- that's what the Trainer scores against.
-        ver = wk.init_wk(ser, wkmode="wk3",
-                         mute_sidetone=self.mute, paddle_echo=True)
-        # A known speed-pot range makes 'follow knob' map cleanly to WPM:
-        # Setup Speed Pot, min 5 WPM, range 45 -> pot byte offset = WPM - 5.
-        ser.write(bytes([0x05, 5, 45, 0]))
-        time.sleep(0.05)
-        # Set the WinKeyer's internal keyer speed (drives its echo decoder).
-        # 0x02 <n>: n>0 sets a fixed WPM; n=0 means "use the speed pot".
+        ver = wk.host_open(ser)
+        # WK3 is the reference. WK2 lacks the WK3-only setup commands; WK1
+        # can't report its levers at all and is read by polling instead.
+        self.gen = wk.generation(ver) or 3
         wpm_byte = 0 if self.follow_knob else max(5, min(99, int(self.wpm)))
-        ser.write(bytes([0x02, wpm_byte]))
-        time.sleep(0.05)
-        # Sidetone frequency (WK3 mode: byte value = 62500 / freq Hz).
-        hz = max(500, min(2000, int(self.sidetone_hz)))
-        ser.write(bytes([0x01, max(16, min(125, 62500 // hz))]))
-        time.sleep(0.05)
-        # Sidetone volume (Admin 25, n=1 low / n=4 high -- two levels only).
-        ser.write(bytes([0x00, 0x19, 0x01 if self.sidetone_vol == "low" else 0x04]))
-        time.sleep(0.05)
-        ser.reset_input_buffer()
+        if self.gen == 1:
+            ser.write(wk.HOST_CLOSE)       # WK1 is polled with host mode closed
+            time.sleep(0.1)
+            self._wk1 = wk.WK1Poller(
+                ser, self._levers, on_speed=self._wk1_speed,
+                on_busy=lambda busy: self._notify(("busy", busy)),
+                on_lost=lambda: self._notify(("lost",)))
+            self._wk1.poll_speed = self.follow_knob
+            self._wk1_configure()          # applied once polling starts
+        else:
+            # paddle_echo=True makes the WinKeyer send the decoded ASCII of
+            # what you key on the paddle -- that's what the Trainer scores.
+            wk.configure_wk(ser, ver, wkmode="wk3" if self.gen == 3 else "wk2",
+                            mute_sidetone=self.mute, paddle_echo=True)
+            # A known speed-pot range makes 'follow knob' map cleanly to WPM:
+            # Setup Speed Pot, min 5 WPM, range 45 -> pot byte offset = WPM - 5.
+            ser.write(bytes([0x05, 5, 45, 0]))
+            time.sleep(0.05)
+            # Set the WinKeyer's internal keyer speed (drives its echo decoder).
+            # 0x02 <n>: n>0 sets a fixed WPM; n=0 means "use the speed pot".
+            ser.write(bytes([0x02, wpm_byte]))
+            time.sleep(0.05)
+            ser.write(bytes([0x01, wk.sidetone_byte(self.sidetone_hz, self.gen)]))
+            time.sleep(0.05)
+            if self.gen == 3:
+                # Sidetone volume (Admin 25, n=1 low / n=4 high -- two levels only).
+                ser.write(bytes([0x00, 0x19,
+                                 0x01 if self.sidetone_vol == "low" else 0x04]))
+                time.sleep(0.05)
+            ser.reset_input_buffer()
         self.ser = ser
         self.running = True
         # App-side decoder: watches the keyed element stream to spot what
@@ -224,8 +240,9 @@ class Controller:
         # signal -- and to measure the user's actual sending speed. Regular
         # scoring characters come from the WK's own echo, which samples the
         # levers directly in firmware and best matches what the user hears.
+        # WK1 has no paddle echo in poll mode, so there the decoder stands in.
         self.decoder = morse_decode.MorseDecoder(
-            wpm=self.wpm, notify=lambda ev: self._notify(("decode", ev)))
+            wpm=self.wpm, notify=self._decoder_event)
         if self.mode == "keyer":
             self._keyer = IambicKeyer(self._key_down, self._key_up, wpm=self.wpm)
             self._keyer.start()
@@ -236,15 +253,26 @@ class Controller:
                                        lambda: self._decode_key(False),
                                        wpm=self.wpm)
             self._shadow.start()
-        self._reader = threading.Thread(target=self._read_loop, daemon=True)
-        self._reader.start()
+        if self._wk1:
+            self._wk1.start()
+        else:
+            self._reader = threading.Thread(target=self._read_loop, daemon=True)
+            self._reader.start()
         return ver
+
+    @property
+    def model_name(self):
+        return {1: "WinKeyer 1", 2: "WinKeyer 2", 3: "WinKeyer 3"}.get(
+            self.gen, "WinKeyer")
 
     def stop(self):
         self.running = False
         if self._reader:
             self._reader.join(timeout=1.5)
             self._reader = None
+        if self._wk1:
+            self._wk1.stop()               # also restores the keyer's settings
+            self._wk1 = None
         if self._keyer:
             self._keyer.stop()
             self._keyer = None
@@ -287,18 +315,7 @@ class Controller:
                     self._notify(("wpm", wpm))
         elif (b & 0xC0) == 0xC0:                 # status / paddle / pushbutton
             if b & 0x08:
-                dit = bool(b & 0x01)
-                dah = bool(b & 0x02)
-                if self.swap:
-                    dit, dah = dah, dit
-                self._notify(("levers", dit, dah))
-                if self.mode == "keyer" and self._keyer:
-                    self._keyer.feed(dit, dah)
-                else:
-                    if self._shadow:
-                        self._shadow.feed(dit, dah)
-                    self._debounced("dit", dit)
-                    self._debounced("dah", dah)
+                self._levers(bool(b & 0x01), bool(b & 0x02))
             else:                                # regular WK status byte
                 busy = bool(b & 0x04)            # WK is keying out buffered text
                 if busy != self._last_busy:
@@ -306,6 +323,46 @@ class Controller:
                     self._notify(("busy", busy))
         elif 0x20 <= b <= 0x7E:                  # printable ASCII = paddle echo
             self._notify(("echo", chr(b)))
+
+    def _levers(self, dit, dah):
+        """Raw lever state, from a WK2/WK3 paddle byte or the WK1 poller."""
+        if self.swap:
+            dit, dah = dah, dit
+        self._notify(("levers", dit, dah))
+        if self.mode == "keyer" and self._keyer:
+            self._keyer.feed(dit, dah)
+        else:
+            if self._shadow:
+                self._shadow.feed(dit, dah)
+            self._debounced("dit", dit)
+            self._debounced("dah", dah)
+
+    # -- WinKeyer 1 ----------------------------------------------------------
+    def _wk1_configure(self):
+        wpm_byte = 0 if self.follow_knob else max(5, min(99, int(self.wpm)))
+        self._wk1.configure(
+            0x00 if self.mute else wk.WK1_PINCFG_SIDETONE, wpm_byte,
+            wk.sidetone_byte(self.sidetone_hz, 1))
+
+    def _wk1_speed(self, raw):
+        """WK1 speed pot, raw 0..63, mapped onto the same 5-50 WPM span the
+        WK2/WK3 pot is set up for."""
+        if self.follow_knob:
+            wpm = 5 + round(raw * 45 / 63)
+            if wpm != self.wpm:
+                self.set_wpm(wpm)
+                self._notify(("wpm", wpm))
+
+    def _decoder_event(self, ev):
+        self._notify(("decode", ev))
+        # WK1 polled with host mode closed sends no paddle echo; the app
+        # decoder's characters take its place. (BK already reaches the
+        # tabs through the decode event.)
+        if self.gen == 1:
+            if ev[0] == "char" and ev[1] not in ("BK", morse_decode.UNKNOWN):
+                self._notify(("echo", ev[1]))
+            elif ev[0] == "space":
+                self._notify(("echo", " "))
 
     # -- paddle passthrough (debounced) ------------------------------------
     def _debounced(self, name, now):
@@ -376,6 +433,10 @@ class Controller:
         # Also drive the WinKeyer's internal speed (affects echo decoding,
         # autospace, and its own keying). When 'follow_knob' is on, the
         # WinKeyer is already taking speed from the pot -- don't override.
+        if self._wk1:
+            if not self.follow_knob:
+                self._wk1_configure()
+            return
         if self.ser and not self.follow_knob:
             try:
                 self.ser.write(bytes([0x02, max(5, min(99, int(wpm)))]))
@@ -384,6 +445,10 @@ class Controller:
 
     def set_follow(self, follow):
         self.follow_knob = follow
+        if self._wk1:
+            self._wk1.poll_speed = follow
+            self._wk1_configure()
+            return
         if self.ser:
             try:
                 # 0x02 0  -> WinKeyer reads its speed pot live
@@ -395,6 +460,9 @@ class Controller:
 
     def set_mute(self, mute):
         self.mute = mute
+        if self._wk1:
+            self._wk1_configure()
+            return
         if self.ser:
             try:
                 self.ser.write(bytes([wk.CMD_SET_PINCFG,
@@ -404,8 +472,11 @@ class Controller:
 
     def set_sidetone_hz(self, hz):
         self.sidetone_hz = int(hz)
+        if self._wk1:
+            self._wk1_configure()
+            return
         if self.ser:
-            v = max(16, min(125, 62500 // max(500, int(hz))))
+            v = wk.sidetone_byte(hz, self.gen)
             try:
                 self.ser.write(bytes([0x01, v]))
             except Exception:
@@ -414,7 +485,7 @@ class Controller:
     def set_sidetone_vol(self, level):
         """level: 'low' or 'high'."""
         self.sidetone_vol = level
-        if self.ser:
+        if self.ser and self.gen == 3:          # WK3-only command
             try:
                 self.ser.write(bytes([0x00, 0x19,
                                       0x01 if level == "low" else 0x04]))
@@ -426,6 +497,9 @@ class Controller:
         """Hand `text` to the WinKeyer's buffer; it keys it out at its current
         WPM. With sidetone unmuted, the user hears it; the BUSY status bit
         goes high while sending and clears when the buffer drains."""
+        if self._wk1:
+            self._wk1.send_text(text)
+            return
         if not self.ser:
             return
         try:
@@ -435,6 +509,9 @@ class Controller:
 
     def abort_send(self):
         """Clear the WinKeyer's buffer -- aborts any in-progress transmission."""
+        if self._wk1:
+            self._wk1.abort()
+            return
         if not self.ser:
             return
         try:
@@ -1102,10 +1179,12 @@ class App(ctk.CTk):
         elif tag == "started":
             self.running, self.busy = True, False
             self._sync_enabled()
-            self._set_status(f"Running on {ev[1]}.", T.LIME)
+            self._set_status(f"Running on {ev[1]} ({ev[2]}).", T.LIME)
             if self.tabs.get() == PLAY_TAB:
                 self._check_keyboard_permission()
             self._save_state()                # remember a port that actually worked
+        elif tag == "warn":
+            self._set_status(ev[1], T.WARN)
         elif tag == "startfail":
             self.running, self.busy = False, False
             self._sync_enabled()
@@ -1169,8 +1248,12 @@ class App(ctk.CTk):
 
     def _start_worker(self, port):
         try:
-            self.ctrl.start(port)
-            self.events.put(("started", port))
+            ver = self.ctrl.start(port)
+            self.events.put(("started", port, self.ctrl.model_name))
+            if self.ctrl.gen == 2 and ver < 23:
+                self.events.put(("warn",
+                    f"WinKeyer 2 firmware v{ver}: paddle reporting is only "
+                    "documented from v23 -- if the dots stay dark, that's why."))
         except serial.SerialException as exc:
             msg = ("Port is in use — close other software that has it "
                    "(a logger, rig control)." if ("Access is denied" in str(exc)

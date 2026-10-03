@@ -34,6 +34,7 @@ The serial link is fixed at 1200 baud, 8 data bits, no parity, 2 stop bits
 import argparse
 import ctypes
 import sys
+import threading
 import time
 
 try:
@@ -53,6 +54,7 @@ HOST_CLOSE = bytes([0x00, 0x03])   # Admin 3  -- back to standalone
 SET_WK2    = bytes([0x00, 0x0B])   # Admin 11 -- WK2 mode (pushbutton/paddle status)
 ADMIN_LOAD_X1MODE = 0x0F           # Admin 15 -- load X1MODE register
 X1MODE_PADDLE_STATUS = 0x02        # X1MODE bit 1 -- "Enable Paddle Status"
+WK2_X1MODE_PADDLE_STATUS = 0x10    # same, on a real WK2 chip (bit 4)
 CMD_SET_MODE = 0x0E                # Set WinKeyer Mode
 MODE_IAMBICB_NO_WDOG = 0x80        # bit 7 disables the paddle watchdog
 CMD_SET_PINCFG = 0x09              # Set output pin config (bit 1 = sidetone enable)
@@ -94,21 +96,57 @@ def _wait_byte(ser, timeout):
     return None
 
 
+def host_open(ser):
+    """Send Host-Open and return the revision byte WinKeyer answers with
+    (or None). The datasheet says to wait for it before sending anything else."""
+    ser.reset_input_buffer()
+    ser.write(HOST_OPEN)
+    ver = _wait_byte(ser, 1.5)
+    time.sleep(0.1)
+    return ver
+
+
+def generation(ver):
+    """Chip generation from the Host-Open revision byte: WK1 chips report
+    v9/v10, WK2 v20-23, WK3 v30 and up. None if there was no answer."""
+    if ver is None:
+        return None
+    if ver >= 30:
+        return 3
+    if ver >= 20:
+        return 2
+    return 1
+
+
+def sidetone_byte(hz, gen):
+    """Sidetone Frequency (0x01) parameter for `hz` on a given chip generation.
+    WK3 takes 62500/f; WK2 and WK1 pick from a 10-entry table, f = 4000/N
+    (WK2 datasheet Table 3) and f ~= 3759/N (WinKey v10 datasheet Fig. 5)."""
+    hz = max(375, min(2000, int(hz)))
+    if gen == 3:
+        return max(16, min(125, 62500 // hz))
+    base = 4000 if gen == 2 else 3759
+    return max(1, min(10, round(base / hz)))
+
+
 def init_wk(ser, wkmode="wk2", paddle_echo=False, mute_sidetone=True):
     """Enter host mode and turn on raw paddle-status reporting.
+    Returns the firmware revision byte WinKeyer sends on open (or None).
+    See configure_wk() for the arguments."""
+    ver = host_open(ser)
+    configure_wk(ser, ver, wkmode, paddle_echo, mute_sidetone)
+    return ver
 
-    wkmode        'wk2' -> WK2 mode + X1MODE paddle-status bit (datasheet Table 1)
+
+def configure_wk(ser, ver, wkmode="wk2", paddle_echo=False, mute_sidetone=True):
+    """Set up a WinKeyer that is already in host mode (see host_open).
+
+    wkmode        'wk2' -> WK2 mode + X1MODE paddle-status bit
                   'wk3' -> WK3 mode + X2MODE paddle-status bit (datasheet Table 5)
                   'off' -> host mode only, no paddle status
     paddle_echo   also echo decoded letters back -- a diagnostic fallback so we
                   can tell whether the keyer sees the paddle at all.
-    mute_sidetone clear PINCFG so the WinKeyer stops beeping its own sidetone.
-
-    Returns the firmware revision byte WinKeyer sends on open (or None)."""
-    ser.reset_input_buffer()
-    ser.write(HOST_OPEN)
-    ver = _wait_byte(ser, 1.5)          # datasheet: wait for the revision code
-    time.sleep(0.1)
+    mute_sidetone clear PINCFG so the WinKeyer stops beeping its own sidetone."""
     if wkmode == "wk3":
         ser.write(bytes([0x00, 0x14]))            # Admin 20: WK3 mode
         time.sleep(0.1)
@@ -117,7 +155,12 @@ def init_wk(ser, wkmode="wk2", paddle_echo=False, mute_sidetone=True):
     elif wkmode == "wk2":
         ser.write(bytes([0x00, 0x0B]))            # Admin 11: WK2 mode
         time.sleep(0.1)
-        ser.write(bytes([0x00, 0x0F, 0x02]))      # Admin 15: X1MODE bit1 = paddle status
+        # X1MODE paddle-status bit: bit 1 on a WK3 emulating WK2 (WK3
+        # datasheet Table 1), bit 4 on a real WK2 chip (WK2 datasheet Table 1).
+        real_wk2 = ver is not None and generation(ver) == 2
+        ser.write(bytes([0x00, ADMIN_LOAD_X1MODE,
+                         WK2_X1MODE_PADDLE_STATUS if real_wk2
+                         else X1MODE_PADDLE_STATUS]))
         time.sleep(0.1)
     mode = 0x80                                    # bit7: disable paddle watchdog
     if paddle_echo:
@@ -131,7 +174,6 @@ def init_wk(ser, wkmode="wk2", paddle_echo=False, mute_sidetone=True):
         ser.write(bytes([CMD_SET_PINCFG, 0x00]))
         time.sleep(0.1)
     ser.reset_input_buffer()
-    return ver
 
 
 def close_wk(ser):
@@ -151,6 +193,261 @@ def close_wk(ser):
 def is_paddle_byte(b):
     """True if `b` is a pushbutton/paddle status byte (110, bit 3 set)."""
     return (b & 0xC0) == 0xC0 and (b & 0x08)
+
+
+# --------------------------------------------------------------------------
+# WinKeyer 1 (the original 8-pin chip, firmware v9/v10)
+#
+# WK1 has no paddle-status report -- that arrived with WK2. It does have a
+# diagnostic, Admin 5 "Paddle A2D", that returns the raw voltage on its
+# single resistor-ladder paddle input (WinKey v10 datasheet, p.4, Fig. 4).
+# With the host interface closed WK1 sends nothing unsolicited, so every
+# byte that comes back answers a poll. At 1200 baud that's ~50 readings a
+# second. Anything that needs host mode (sidetone, speed, keying text) is
+# done by briefly opening the host interface between polls.
+# --------------------------------------------------------------------------
+ADMIN_PADDLE_A2D = bytes([0x00, 0x05])
+ADMIN_SPEED_A2D  = bytes([0x00, 0x06])   # raw speed pot, 0..63
+ADMIN_GET_VALUES = bytes([0x00, 0x07])   # the 15 Load Defaults values
+CMD_LOAD_DEFAULTS = 0x0F
+WK1_PINCFG_DEFAULT = 0x05                # reset default: pin 5 = PTT
+WK1_PINCFG_SIDETONE = 0x02               # pin 5 = sidetone, key outputs off
+
+
+def wk1_levers(a2d):
+    """WK1 Paddle A2D reading -> (dit, dah)."""
+    if a2d > 151:
+        return False, False
+    if a2d > 103:
+        return True, False
+    if a2d > 70:
+        return False, True
+    return True, True
+
+
+class WK1Poller:
+    """Read a WinKeyer 1's paddle by polling Admin 5, on a thread of its own.
+
+    on_levers(dit, dah)  called on each confirmed lever change
+    on_speed(raw)        speed-pot reading 0..63, while poll_speed is set
+    on_busy(busy)        keyer BUSY while it sends text from send_text()
+    on_lost()            the port failed (keyer unplugged)
+
+    The thread owns the port once started: callers never write to it."""
+
+    INFLIGHT = 2          # polls kept in the pipe, hides USB-serial latency
+    STALL_S = 0.3         # no answer this long -> resync
+    SPEED_EVERY_S = 0.2
+
+    def __init__(self, ser, on_levers, on_speed=None, on_busy=None,
+                 on_lost=None):
+        self.ser = ser
+        self.on_levers = on_levers
+        self.on_speed = on_speed or (lambda raw: None)
+        self.on_busy = on_busy or (lambda busy: None)
+        self.on_lost = on_lost or (lambda: None)
+        self.poll_speed = False
+        self.readings = 0
+        self._lock = threading.Lock()
+        self._config = None           # pending (pincfg, wpm_byte, sidetone)
+        self._text = ""               # pending text to key out
+        self._abort = False
+        self._running = False
+        self._thread = None
+        self._saved = None            # keyer settings to restore on stop
+        self._levers = (False, False)
+        self._candidate = None        # reading awaiting confirmation
+        self._inflight = 0            # polls sent, not yet answered
+
+    # -- control (any thread) ---------------------------------------------
+    def configure(self, pincfg, wpm_byte, sidetone):
+        """Queue keyer settings; applied in a short host-mode session."""
+        with self._lock:
+            self._config = (pincfg, wpm_byte, sidetone)
+
+    def send_text(self, text):
+        with self._lock:
+            self._text += text
+
+    def abort(self):
+        with self._lock:
+            self._text = ""
+            self._abort = True
+
+    def start(self):
+        """Begin polling. Call with the host interface closed."""
+        self.ser.reset_input_buffer()
+        self.ser.write(ADMIN_GET_VALUES)
+        self._saved = self._read_n(15, 1.0)
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        """Stop polling and put the keyer's own settings back -- WK1 keeps
+        whatever was last set across Host-Close, unlike WK2/WK3."""
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+        try:
+            self._drain()
+            self.ser.write(HOST_OPEN)
+            _wait_byte(self.ser, 1.0)
+            if self._saved and len(self._saved) == 15:
+                self.ser.write(bytes([CMD_LOAD_DEFAULTS]) + self._saved)
+            else:
+                self.ser.write(bytes([CMD_SET_PINCFG, WK1_PINCFG_DEFAULT,
+                                      CMD_SET_MODE, 0x00]))
+            self.ser.write(HOST_CLOSE)
+            self.ser.flush()
+            time.sleep(0.1)
+        except Exception:
+            pass
+
+    # -- thread -----------------------------------------------------------
+    def _loop(self):
+        try:
+            self._poll()
+        except Exception:
+            if self._running:
+                self._running = False
+                self.on_lost()
+
+    def _poll(self):
+        last_rx = time.monotonic()
+        next_speed = 0.0
+        while self._running:
+            with self._lock:
+                config, self._config = self._config, None
+                text, self._text = self._text, ""
+            if config or text:
+                self._drain()
+                self._host_session(config, text)
+                last_rx = time.monotonic()
+                continue
+            now = time.monotonic()
+            if self.poll_speed and now >= next_speed:
+                next_speed = now + self.SPEED_EVERY_S
+                self._drain()
+                self.ser.write(ADMIN_SPEED_A2D)
+                raw = _wait_byte(self.ser, self.STALL_S)
+                if raw is not None and raw <= 63:
+                    self.on_speed(raw)
+                last_rx = time.monotonic()
+            while self._inflight < self.INFLIGHT:
+                self.ser.write(ADMIN_PADDLE_A2D)
+                self._inflight += 1
+            if self._read_polls():
+                last_rx = time.monotonic()
+            elif time.monotonic() - last_rx > self.STALL_S:
+                self.ser.reset_input_buffer()         # lost a byte -- resync
+                self._inflight = 0
+                last_rx = time.monotonic()
+            else:
+                time.sleep(0.001)
+
+    def _read_polls(self):
+        n = self.ser.in_waiting
+        if not n:
+            return False
+        for b in self.ser.read(n):
+            self._inflight = max(0, self._inflight - 1)
+            self._reading(b)
+        return True
+
+    def _reading(self, a2d):
+        """Report a lever change once the next reading backs it up. The
+        ladder voltage passes through the dit band on its way to dah (and
+        so on), and one sample caught mid-swing must not become a dit. A
+        new state that is followed by the old one again was a real short
+        tap; one followed by a third state was the swing."""
+        self.readings += 1
+        levers = wk1_levers(a2d)
+        if levers == self._levers:
+            if self._candidate is not None:        # quick tap, now released
+                self.on_levers(*self._candidate)
+                self.on_levers(*levers)
+            self._candidate = None
+        elif levers == self._candidate:
+            self._levers, self._candidate = levers, None
+            self.on_levers(*levers)
+        else:
+            self._candidate = levers
+
+    def _drain(self):
+        """Collect the answers to polls still in flight, so the next
+        request's reply can't be mistaken for one of them."""
+        end = time.monotonic() + self.STALL_S
+        while self._inflight and time.monotonic() < end:
+            if not self._read_polls():
+                time.sleep(0.001)
+        self._inflight = 0
+        self.ser.reset_input_buffer()
+
+    def _host_session(self, config, text):
+        ser = self.ser
+        ser.write(HOST_OPEN)
+        _wait_byte(ser, 1.0)                  # revision byte
+        if config:
+            pincfg, wpm_byte, sidetone = config
+            ser.write(bytes([CMD_SET_MODE, 0x80,        # watchdog off
+                             CMD_SET_PINCFG, pincfg,
+                             0x02, wpm_byte,            # speed (0 = pot)
+                             0x01, sidetone]))
+        if text:
+            with self._lock:
+                self._abort = False
+            ser.write(text.encode("ascii", errors="ignore"))
+            self._follow_busy()
+        ser.write(HOST_CLOSE)
+        ser.flush()
+        time.sleep(0.05)
+        ser.reset_input_buffer()
+
+    def _follow_busy(self):
+        """Stay in host mode while WK1 keys out the text, reporting BUSY,
+        until it finishes (or is aborted, or never starts)."""
+        ser = self.ser
+        busy = seen = False
+        started = time.monotonic()
+        while self._running:
+            with self._lock:
+                more, self._text = self._text, ""
+                abort, self._abort = self._abort, False
+            if more:
+                ser.write(more.encode("ascii", errors="ignore"))
+            if abort:
+                ser.write(bytes([0x0A]))             # Clear Buffer
+            n = ser.in_waiting
+            if not n:
+                if not seen and time.monotonic() - started > 1.5:
+                    break                            # never went busy
+                time.sleep(0.005)
+                continue
+            for b in ser.read(n):
+                if (b & 0xE0) != 0xC0:
+                    continue                         # pot / echo byte
+                now = bool(b & 0x04)
+                seen = seen or now
+                if now != busy:
+                    busy = now
+                    self.on_busy(busy)
+            if seen and not busy:
+                break                                # sent it all
+        if busy:
+            self.on_busy(False)
+
+    def _read_n(self, count, timeout):
+        out = bytearray()
+        end = time.monotonic() + timeout
+        while len(out) < count and time.monotonic() < end:
+            n = self.ser.in_waiting
+            if n:
+                out += self.ser.read(min(n, count - len(out)))
+            else:
+                time.sleep(0.005)
+        return bytes(out)
 
 
 # --------------------------------------------------------------------------
@@ -419,7 +716,52 @@ def decode(b, wkmode="wk2"):
     return f"echo      '{ch}'"
 
 
+def monitor_a2d(port):
+    """WinKeyer 1 diagnostic: stream the raw Paddle A2D readings."""
+    port = resolve_port(port)
+    ser = open_wk_or_exit(port)
+    ver = host_open(ser)
+    ser.write(HOST_CLOSE)
+    time.sleep(0.1)
+    ser.reset_input_buffer()
+    print(f"Opened {port}. WinKeyer firmware byte: "
+          f"{'0x%02X' % ver if ver is not None else 'no response'}"
+          f"{' (WK%d)' % generation(ver) if ver is not None else ''}")
+    print("Polling Admin 5 (Paddle A2D). Work the paddle; a line prints on "
+          "every change.\nExpect >151 up, 104-151 dit, 71-103 dah, "
+          "<=70 both. Ctrl+C to stop.\n")
+    t0 = time.time()
+    last = None
+    count = 0
+    try:
+        while True:
+            ser.write(ADMIN_PADDLE_A2D)
+            v = _wait_byte(ser, 0.5)
+            if v is None:
+                print("  no answer to Paddle A2D -- not a WK1?")
+                continue
+            count += 1
+            levers = wk1_levers(v)
+            if last is None or levers != last[0] or abs(v - last[1]) > 8:
+                dit, dah = levers
+                print(f"[{(time.time() - t0) * 1000:9.1f} ms]  a2d={v:3d}  "
+                      f"dit={int(dit)} dah={int(dah)}")
+                last = (levers, v)
+    except KeyboardInterrupt:
+        secs = time.time() - t0
+        print(f"\nStopping. {count} readings in {secs:.1f} s "
+              f"({count / max(secs, 0.001):.0f}/s).")
+    finally:
+        try:
+            ser.write(HOST_CLOSE)
+            ser.close()
+        except Exception:
+            pass
+
+
 def monitor(port, wkmode="wk2"):
+    if wkmode == "a2d":
+        return monitor_a2d(port)
     port = resolve_port(port)
     ser = open_wk_or_exit(port)
     ver = init_wk(ser, wkmode=wkmode, paddle_echo=True)
@@ -578,9 +920,12 @@ def main():
                         ("run", "translate paddle -> keyboard")):
         sp = sub.add_parser(name, help=help_)
         sp.add_argument("--port", help="serial port, e.g. COM24 (auto-detect if omitted)")
-        sp.add_argument("--wkmode", choices=["wk1", "wk2", "wk3"], default="wk3",
+        modes = ["wk1", "wk2", "wk3"] + (["a2d"] if name == "monitor" else [])
+        sp.add_argument("--wkmode", choices=modes, default="wk3",
                         help="wk2/wk3 = paddle mode (raw levers); "
-                             "wk1 = straight-key mode (follow KEYDOWN)")
+                             "wk1 = straight-key mode (follow KEYDOWN)"
+                             + ("; a2d = poll a WinKeyer 1 chip's paddle input"
+                                if name == "monitor" else ""))
         if name == "run":
             sp.add_argument("--dit", default="lctrl", help=f"key for dit lever ({keys})")
             sp.add_argument("--dah", default="rctrl", help=f"key for dah lever ({keys})")
