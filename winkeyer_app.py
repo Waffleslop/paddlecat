@@ -159,6 +159,21 @@ def save_settings(d):
         return False
 
 
+def _log_connect(port, gen, ver, a2d):
+    """Append what the keyer said on connect to connect.log next to the
+    profile -- what to ask a user for when an unfamiliar WinKeyer misbehaves."""
+    try:
+        path = PROFILE_PATH.parent / "connect.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fmt = lambda b: "none" if b is None else f"0x{b:02X} ({b})"
+        with path.open("a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {port}  "
+                    f"revision={fmt(ver)}  paddle_a2d={fmt(a2d)}  "
+                    f"-> WK{gen or '?'}\n")
+    except Exception:
+        pass
+
+
 # ===========================================================================
 # Engine
 # ===========================================================================
@@ -177,6 +192,7 @@ class Controller:
         self.decoder = None            # app-side Morse decoder
         self._wk1 = None               # WK1Poller when the keyer is a WK1
         self.gen = None                # chip generation: 1, 2 or 3
+        self.ver = None                # revision byte from Host-Open
         self.running = False
         # settings (set by the GUI before start; live ones noted)
         self.mode = "keyer"            # "keyer" | "paddle"
@@ -198,10 +214,15 @@ class Controller:
     def start(self, port):
         """Open the WinKeyer and begin translating. Raises on failure."""
         ser = wk.open_wk(port)
-        ver = wk.host_open(ser)
+        gen, ver, a2d = wk.identify(ser)
+        self.ver = ver
+        _log_connect(port, gen, ver, a2d)
+        if gen is None:
+            ser.close()
+            raise RuntimeError(f"No WinKeyer answered on {port}.")
         # WK3 is the reference. WK2 lacks the WK3-only setup commands; WK1
         # can't report its levers at all and is read by polling instead.
-        self.gen = wk.generation(ver) or 3
+        self.gen = gen
         wpm_byte = 0 if self.follow_knob else max(5, min(99, int(self.wpm)))
         if self.gen == 1:
             ser.write(wk.HOST_CLOSE)       # WK1 is polled with host mode closed
@@ -262,8 +283,11 @@ class Controller:
 
     @property
     def model_name(self):
-        return {1: "WinKeyer 1", 2: "WinKeyer 2", 3: "WinKeyer 3"}.get(
+        name = {1: "WinKeyer 1", 2: "WinKeyer 2", 3: "WinKeyer 3"}.get(
             self.gen, "WinKeyer")
+        if self.ver is not None:
+            name += f", firmware {self.ver}"
+        return name
 
     def stop(self):
         self.running = False

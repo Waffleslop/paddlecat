@@ -96,6 +96,37 @@ def _wait_byte(ser, timeout):
     return None
 
 
+def calibrate(ser):
+    """Admin 0: trim a WK1's RC oscillator to the host's serial timing.
+    Untrimmed, a WK1 can be several percent off 1200 baud and garble what
+    it sends back (WinKey v10 datasheet, p.3). WK2/WK3 accept and ignore it."""
+    ser.write(bytes([0x00, 0x00]))
+    ser.flush()
+    time.sleep(0.1)
+    ser.write(bytes([0xFF]))
+    ser.flush()
+    time.sleep(0.05)
+    ser.reset_input_buffer()
+
+
+def identify(ser):
+    """Calibrate, tell the chip generation, and leave host mode OPEN.
+
+    Returns (gen, ver, a2d). Paddle A2D (Admin 5) is the tell: a WK1
+    returns the live paddle voltage (150+ with the paddle at rest), while
+    WK2 and WK3 always return 0 -- so a WK1 is recognised even if its
+    revision byte comes back garbled. gen is None if nothing answered."""
+    ser.reset_input_buffer()
+    calibrate(ser)
+    ser.write(ADMIN_PADDLE_A2D)
+    a2d = _wait_byte(ser, 0.5)
+    time.sleep(0.05)
+    ser.reset_input_buffer()
+    ver = host_open(ser)
+    gen = 1 if a2d else generation(ver)
+    return gen, ver, a2d
+
+
 def host_open(ser):
     """Send Host-Open and return the revision byte WinKeyer answers with
     (or None). The datasheet says to wait for it before sending anything else."""
@@ -646,6 +677,7 @@ def probe(port):
         return None, f"could not open ({exc})"
     try:
         ser.reset_input_buffer()
+        calibrate(ser)                  # a WK1 answers garbled until trimmed
         ser.write(HOST_OPEN)
         ver = _wait_byte(ser, 1.0)
         ser.write(HOST_CLOSE)
@@ -720,13 +752,13 @@ def monitor_a2d(port):
     """WinKeyer 1 diagnostic: stream the raw Paddle A2D readings."""
     port = resolve_port(port)
     ser = open_wk_or_exit(port)
-    ver = host_open(ser)
+    gen, ver, a2d = identify(ser)
     ser.write(HOST_CLOSE)
     time.sleep(0.1)
     ser.reset_input_buffer()
     print(f"Opened {port}. WinKeyer firmware byte: "
           f"{'0x%02X' % ver if ver is not None else 'no response'}"
-          f"{' (WK%d)' % generation(ver) if ver is not None else ''}")
+          f"{' (WK%d)' % gen if gen else ''}, paddle A2D at start: {a2d}")
     print("Polling Admin 5 (Paddle A2D). Work the paddle; a line prints on "
           "every change.\nExpect >151 up, 104-151 dit, 71-103 dah, "
           "<=70 both. Ctrl+C to stop.\n")
