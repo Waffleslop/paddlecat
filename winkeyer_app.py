@@ -47,6 +47,38 @@ import qsos
 import theme as T
 
 
+# Bump with every release -- the update check compares it to the latest
+# GitHub release tag.
+APP_VERSION = "1.2.2"
+RELEASES_API = "https://api.github.com/repos/Waffleslop/paddlecat/releases/latest"
+RELEASES_URL = "https://github.com/Waffleslop/paddlecat/releases/latest"
+
+
+def _version_tuple(v):
+    try:
+        return tuple(int(x) for x in v.strip().lstrip("vV").split("."))
+    except ValueError:
+        return ()
+
+
+def check_for_update():
+    """Return (version, url) when GitHub has a newer release, else None.
+    Any failure -- offline, rate-limited, odd tag -- is just None."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(RELEASES_API, headers={
+            "User-Agent": f"PaddleCAT/{APP_VERSION}",
+            "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        latest = data.get("tag_name", "")
+        if _version_tuple(latest) > _version_tuple(APP_VERSION):
+            return latest.lstrip("vV"), data.get("html_url") or RELEASES_URL
+    except Exception:
+        pass
+    return None
+
+
 # Keys offered in the UI:  display label -> winkeyer_vail.KEYMAP name
 KEY_CHOICES = {
     "[  left bracket":   "lbracket",
@@ -559,7 +591,7 @@ class App(ctk.CTk):
             pass
         T.apply()                       # must precede the root window
         super().__init__()
-        self.title("PaddleCAT - WinKeyer CW Trainer")
+        self.title(f"PaddleCAT {APP_VERSION} - WinKeyer CW Trainer")
         try:
             self.iconbitmap(APP_ICON)   # also stops CTk swapping in its own
         except Exception:
@@ -621,6 +653,8 @@ class App(ctk.CTk):
         self._next_prompt(reset_score=True)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(self.POLL_MS, self._poll)
+        threading.Thread(target=lambda: self.events.put(
+            ("update", check_for_update())), daemon=True).start()
 
     # -- HEADER ------------------------------------------------------------
     def _build_header(self):
@@ -645,6 +679,44 @@ class App(ctk.CTk):
         self.port_menu = ctk.CTkOptionMenu(head, variable=self.port_var,
                                            values=["(none)"], width=112)
         self.port_menu.pack(side="right", padx=(0, 6))
+
+    # -- UPDATE BANNER -----------------------------------------------------
+    BANNER_H = 44
+
+    def _show_update(self, version, url):
+        """Newer release on GitHub: a banner under the header. The window
+        is fixed-size, so the tabs give up the banner's height meanwhile."""
+        if getattr(self, "_update_banner", None):
+            return
+        bar = ctk.CTkFrame(self, fg_color=T.SURFACE, border_color=T.LIME,
+                           border_width=1, corner_radius=8,
+                           height=self.BANNER_H)
+        bar.pack_propagate(False)
+        ctk.CTkLabel(bar, text=f"PaddleCAT {version} is out — you have "
+                               f"{APP_VERSION}.",
+                     text_color=T.TEXT, anchor="w").pack(
+            side="left", fill="x", expand=True, padx=(12, 6))
+        ctk.CTkButton(bar, text="Later", width=60, fg_color="transparent",
+                      hover_color=T.RAISED, text_color=T.MUTED,
+                      command=self._hide_update).pack(side="right",
+                                                      padx=(0, 8))
+        ctk.CTkButton(bar, text="Get the update", width=120,
+                      fg_color=T.LIME, hover_color=T.LIME_HOT,
+                      text_color=T.ON_ACCENT,
+                      font=ctk.CTkFont(weight="bold"),
+                      command=lambda: webbrowser.open(url)).pack(
+            side="right", padx=(0, 6))
+        bar.pack(fill="x", padx=12, pady=(0, 6), before=self.tabs)
+        self.tabs.configure(height=self.tabs.cget("height") - self.BANNER_H - 6)
+        self._update_banner = bar
+
+    def _hide_update(self):
+        bar = self._update_banner
+        if bar:
+            bar.destroy()
+            self.tabs.configure(
+                height=self.tabs.cget("height") + self.BANNER_H + 6)
+            self._update_banner = None
 
     # -- PLAY ONLINE TAB ---------------------------------------------------
     def _build_play(self, p):
@@ -1207,6 +1279,9 @@ class App(ctk.CTk):
             if self.tabs.get() == PLAY_TAB:
                 self._check_keyboard_permission()
             self._save_state()                # remember a port that actually worked
+        elif tag == "update":
+            if ev[1]:
+                self._show_update(*ev[1])
         elif tag == "warn":
             self._set_status(ev[1], T.WARN)
         elif tag == "startfail":
